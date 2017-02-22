@@ -1,10 +1,14 @@
 /* Build */
 /* End Build */
 
-define([],function(){
+define(['kb'],function(kb){
+
+  /* Initiate KB */
+  kb();
 
   function CreateKonnektMP()
   {
+
     function KonnektMP()
     {
 
