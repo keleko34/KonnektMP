@@ -1,21 +1,18 @@
 {
-  "name": "konnektdt",
-  "description": "Observable data model",
-  "version": "0.5.8",
+  "name": "konnektmp",
+  "description": "A templating and mapping library",
+  "version": "0.1.0",
   "main": "index",
   "authors": [
     "Keleko34"
   ],
   "license": "MIT",
   "keywords": [
-    "Object",
-    "Array",
-    "Bindable Data",
-    "Observable",
-    "Data Binding",
-    "Data Change Events"
+    "templates",
+    "mapping",
+    "components"
   ],
-  "homepage": "https://github.com/keleko34/konnektdt",
+  "homepage": "https://github.com/keleko34/konnektmp",
   "ignore": [
     "**/.*",
     "node_modules",
