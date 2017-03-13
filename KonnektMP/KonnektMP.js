@@ -18,6 +18,8 @@ define(['KB'],function(kb){
           update:[]
         };
     
+    /* Events need to be localized to maps and not global, easier chains */
+    
     function KonnektMP(node)
     {
       /* Main constructor takes node and splices into template and returns finished node */
@@ -261,6 +263,11 @@ define(['KB'],function(kb){
       
       /* ENDREGION charMaps */
     
+    function connect(obj)
+    {
+      
+    }
+    
     function map(el)
     {
       function loopMap(childNodes)
@@ -324,7 +331,7 @@ define(['KB'],function(kb){
               if(_onaction(a) !== true) obj[a.data.key] = a.data;
               return obj;
             },{});
-            mp.bindTexts = bt;
+            mp.bindTexts = bt.filter(function(v){return (typeof v === 'object' || v.length !== 0)});
             a.type = 'mapper';
             a.data = mp;
             if(_onaction(a) !== true) attrBinds.push(a.data);
@@ -423,57 +430,6 @@ define(['KB'],function(kb){
       });
       
       Object.defineProperty(node,'kb_maps',setDescriptor(map(node)));
-      
-      for(var x=0,len=node.kb_maps.length;x<len;x++)
-      {
-        (function(c){
-          switch(node.kb_maps[c].type)
-          {
-            case 'text':
-              node.kb_maps[c].parent.addAttrUpdateListener('html',function(e){
-                if(node.kb_maps[c].element.parentElement === undefined)
-                {
-                  var a = new actionObject('unsync',binds[x]);
-                  _onaction(a);
-                  node.kb_maps.splice(c,1);
-                  return;
-                }
-
-                if(node.kb_maps[c].element.childNodes.length !== 1)
-                {
-                  //fire update action
-                  e.map =  node.kb_maps[c];
-                  var a = new actionObject('update',e);
-                  _onaction(a);
-                }
-              });
-              node.kb_maps[c].element.addAttrUpdateListener(node.kb_maps[c].listener,function(e){
-                //fire update action
-                e.map =  node.kb_maps[c];
-                var a = new actionObject('update',e);
-                  _onaction(a);
-              })
-            break;
-            case 'attribute':
-              if(node.kb_maps[c].listener.indexOf('on') === 0)
-              {
-                node.kb_maps[c].element.setAttribute(node.kb_maps[c].listener.replace('on',''),node.kb_maps[c].element.getAttribute(node.kb_maps[c].listener));
-                node.kb_maps[c].element.removeAttribute(node.kb_maps[c].listener);
-                node.kb_maps[c].listener = node.kb_maps[c].listener.replace('on','');
-                //change to be on property rather than attribute
-
-              }
-              node.kb_maps[c].element.addAttrUpdateListener(node.kb_maps[c].listener,function(e){
-                //fire update action
-                e.map =  node.kb_maps[c];
-                var a = new actionObject('update',e);
-                _onaction(a);
-              })
-            break;
-          }
-        }(x))
-      }
-      
       return node.kb_maps;
     }
     
