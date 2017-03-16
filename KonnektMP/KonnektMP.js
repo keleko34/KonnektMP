@@ -384,7 +384,7 @@ define(['KB'],function(kb){
     function splitBindNames(splitTexts)
     {
       /* filter out all non bind strings: ["{{name}}","{{greeting}}"]*/
-      splitTexts.filter(function(v){
+      return splitTexts.filter(function(v){
         return (v.indexOf(_start) !== -1 && v.indexOf(_end) !== -1);
       })
       /* modify string to standard key names: ["name","greeting"]*/
