@@ -137,7 +137,7 @@ define(['KB'],function(kb){
         var type = (isUnknown ? 'component' : ((text.indexOf('for') !== -1 && text.indexOf('loop') !== undefined) ? 'for' : 'text')),
 
             /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
-            binder = getBindObject(type,text,splitText(text),(isUnknown ? '' : 'textContent'),'textContent',node,node.parentElement);
+            binder = getBindObject(binds,type,text,splitText(text),(isUnknown ? '' : 'textContent'),'textContent',node,node.parentElement);
 
         /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
         for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
@@ -149,6 +149,7 @@ define(['KB'],function(kb){
             var bind = new binder(binder.prototype.bindText[x]);
             binder.prototype.bindText[x] = bind;
             if(binds[bind.key] === undefined) binds[bind.key] = [];
+            bind.id = binds[bind.key].length;
             binds[bind.key].push(bind);
           }
         }
@@ -172,7 +173,7 @@ define(['KB'],function(kb){
           var type = (isUnknown ? 'component' : 'attribute'),
 
               /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
-              binder = getBindObject(type,attrs[i].value,splitText(attrs[i].value),(isUnknown ? '' : attrs[i].name),'value',attrs[i],node);
+              binder = getBindObject(binds,type,attrs[i].value,splitText(attrs[i].value),(isUnknown ? '' : attrs[i].name),'value',attrs[i],node);
 
           /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
           for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
@@ -194,7 +195,7 @@ define(['KB'],function(kb){
     /* Mapping Objects */
 
     /* returns a new instancer of a bindObject, that way we can keep prototypes among multiple binds */
-    function getBindObject(type,text,bindtext,listener,prop,target,element)
+    function getBindObject(binds,type,text,bindtext,listener,prop,target,element)
     {
       function bind(b)
       {
@@ -203,6 +204,7 @@ define(['KB'],function(kb){
         this.key = (type !== 'for' ? splitKey(b) : _forData[0]);
         this.filterNames = splitFilters(b);
         this.component = (type !== 'for' ? _forData[1] : undefined);
+        this.id = 0;
 
         /* updates prototype bind text to have the local object inside the array in replacement of string text */
         this.__proto__.bindText = this.__proto__.bindText.map(function(v){
@@ -216,7 +218,7 @@ define(['KB'],function(kb){
         });
 
         /* used to update a data set if it was connected */
-        this.updateData = function(e)
+        this.__proto__.updateData = function(e)
         {
           if(self.isConnected && self._data)
           {
@@ -234,7 +236,7 @@ define(['KB'],function(kb){
         }
 
         /* used to update the dom if the data set has events that can be connected */
-        this.updateDom = function(e)
+        this.__proto__.updateDom = function(e)
         {
           if(!self.isSynced()) return;
           self.element.stopChange();
@@ -249,6 +251,7 @@ define(['KB'],function(kb){
         valset:setDescriptor(bindSet),
         refresh:setDescriptor(refresh),
         connect:setDescriptor(connect),
+        deleteMap:setDescriptor(deleteMap),
         unsync:setDescriptor(unsync),
         isSynced:setDescriptor(isSynced),
         type:setDescriptor(type),
@@ -260,7 +263,8 @@ define(['KB'],function(kb){
         bindTarget:setDescriptor(target,true),
         element:setDescriptor(element,true),
         _data:setDescriptor({},true),
-        filters:setDescriptor({},true)
+        filters:setDescriptor({},true),
+        maps:setDescriptor(binds,true)
       });
 
       return bind
@@ -356,6 +360,12 @@ define(['KB'],function(kb){
       return this;
     }
     
+    function deleteMap()
+    {
+      this.maps[this.key].splice(this.id,1);
+      return this;
+    }
+    
     /* acts like a deconstructor if the element happens to be unsynced */
     function unsync()
     {
@@ -370,6 +380,7 @@ define(['KB'],function(kb){
       this._data = null;
       this.filters = null;
       this.bindNames = null;
+      this.maps = null;
       this.__proto__._data = null;
       this.__proto__.element = null;
       this.__proto__.filters = null;
@@ -377,6 +388,7 @@ define(['KB'],function(kb){
       this.__proto__.bindText = null;
       this.__proto__.bindNames = null;
       this.__proto__.element = null;
+      this.__proto__.maps = null;
       return false;
     }
     
