@@ -20,7 +20,7 @@ define(['KB'],function(kb){
       this.name = node.tagName.toLowerCase();
       
       /* template of the component */
-      this.template = _templates[name] || '<div class="missing_component">Unknown Component</div>';
+      this.template = _templates[this.name] || '<div class="missing_component">Unknown Component</div>';
       
       /* original node */
       this.node = node;
