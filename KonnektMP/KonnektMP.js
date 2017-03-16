@@ -147,6 +147,7 @@ define(['KB'],function(kb){
           {
             /* create new bind object and attach to the binds list for returning */
             var bind = new binder(binder.prototype.bindText[x]);
+            binder.prototype.bindText[x] = bind;
             if(binds[bind.key] === undefined) binds[bind.key] = [];
             binds[bind.key].push(bind);
           }
@@ -181,6 +182,7 @@ define(['KB'],function(kb){
             {
               /* create new bind object and attach to the binds list for returning */
               var bind = new binder(binder.prototype.bindText[x]);
+              binder.prototype.bindText[x] = bind;
               if(binds[bind.key] === undefined) binds[bind.key] = [];
               binds[bind.key].push(bind);
             }
@@ -234,6 +236,7 @@ define(['KB'],function(kb){
         /* used to update the dom if the data set has events that can be connected */
         this.updateDom = function(e)
         {
+          if(!self.isSynced()) return;
           self.element.stopChange();
           if(typeof e === 'string') e = {value:e};
           self.value = e.value;
@@ -250,12 +253,12 @@ define(['KB'],function(kb){
         isSynced:setDescriptor(isSynced),
         type:setDescriptor(type),
         text:setDescriptor(text,true),
-        bindText:setDescriptor(bindtext),
-        bindNames:setDescriptor(splitBindNames(bindtext)),
+        bindText:setDescriptor(bindtext,true),
+        bindNames:setDescriptor(splitBindNames(bindtext),true),
         bindListener:setDescriptor(listener),
         bindProperty:setDescriptor(prop),
-        bindTarget:setDescriptor(target),
-        element:setDescriptor(element),
+        bindTarget:setDescriptor(target,true),
+        element:setDescriptor(element,true),
         _data:setDescriptor({},true),
         filters:setDescriptor({},true)
       });
@@ -282,7 +285,7 @@ define(['KB'],function(kb){
     function isSynced()
     {
       /* parentElement will 'null' if this element is no longer on the dom */
-      if(!this.element.parentElement) this.unsync();
+      if(!this.element.parentElement) return this.unsync();
       return !!this.element.parentElement;
     }
     
@@ -290,26 +293,30 @@ define(['KB'],function(kb){
     function refresh()
     {
       var self = this;
-      /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
-      this.target[this.bindProperty] = this.bindText.reduce(function(c,v){
-        /* while reducing bindTexts if index is standard string then attach, else we need to run value through filters prior to attaching */
-        return c+(typeof v === 'string' ? v : v.filterNames.reduce(function(v,f){
-          if(self.filters !== undefined)
-          {
-            if(self.filters[f] !== undefined)
+      
+      if(this.type !== 'for')
+      {
+        /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
+        this.bindTarget[this.bindProperty] = this.bindText.reduce(function(c,v){
+          /* while reducing bindTexts if index is standard string then attach, else we need to run value through filters prior to attaching */
+          return c+(typeof v === 'string' ? v : (v.filterNames.length === 0 ? v._value : v.filterNames.reduce(function(v,f){
+            if(self.filters !== undefined)
             {
-              return self.filters[f](v);
+              if(self.filters[f] !== undefined)
+              {
+                return self.filters[f](v);
+              }
+              else
+              {
+                console.warn("there is no filter by the name %o in the data model filters %o",f,Object.keys(self.filters));
+                return v;
+              }
             }
-            else
-            {
-              console.warn("there is no filter by the name %o in the data model filters %o",f,Object.keys(self.filters));
-              return v;
-            }
-          }
-          console.error('Somehow filters object was not added to the mapping via .connect() method, please see dev')
-          return v;
-        },v._value));
-      },"");
+            console.error('Somehow filters object was not added to the mapping via .connect() method, please see dev')
+            return v;
+          },v._value)));
+        },"");
+      }
       return this;
     }
     
@@ -327,14 +334,25 @@ define(['KB'],function(kb){
         {
           /* if data set does not exist we create it */
           if(!this._data.exists(this.bindNames[x])) this._data.add(this.bindNames[x],(this._value));
-          this._data.addDataUpdatelistener(this.bindNames[x],this.updateDom);
+          
+          /* update value with data set value, runs refresh command */
+          this.value = this._data.get(this.bindNames[x]);
+          if(this.type !== 'component')
+          {
+            this.isConnected = true;
+            this._data.addDataUpdateListener(this.bindNames[x],this.updateDom);
+            if(this.type === 'for')
+            {
+              console.log('run for type event listeners');
+            }
+          }
         }
         else
         {
           /* **FUTURE** allow standard object setting */
         }
       }
-      this.element.addAttrUpdateListener(this.listener,this.updateData);
+      if(this.bindText.length === 1 && (this.type === 'text' || this.type === 'attribute')) this.element.addAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
       return this;
     }
     
@@ -347,14 +365,19 @@ define(['KB'],function(kb){
         if(this._data.removeDataUpdateListener) this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
       }
       /* also remove element listeners */
-      this.element.removeAttrUpdateListener(this.listener,this.updateData);
+      this.element.removeAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
       /* clear all tied shared objects so GC can pick up this object for destroying */
       this._data = null;
-      this.element = null;
       this.filters = null;
-      this.bindText = null;
       this.bindNames = null;
-      return this;
+      this.__proto__._data = null;
+      this.__proto__.element = null;
+      this.__proto__.filters = null;
+      this.__proto__.bindTarget = null;
+      this.__proto__.bindText = null;
+      this.__proto__.bindNames = null;
+      this.__proto__.element = null;
+      return false;
     }
     
     /* Text Splitters */

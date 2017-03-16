@@ -1,7 +1,7 @@
 {
   "name": "konnektmp",
   "description": "A templating and mapping library",
-  "version": "0.1.0",
+  "version": "0.6.5",
   "main": "index",
   "authors": [
     "Keleko34"
