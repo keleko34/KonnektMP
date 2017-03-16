@@ -14,7 +14,7 @@
           
           mp.register('test',template);
           
-          var mapped = mp(document.querySelector('test'));
+          var mapped = new mp(document.querySelector('test'));
           
           console.log(mapped);
           mapped.node.replaceWith(mapped.wrapper);

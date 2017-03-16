@@ -11,7 +11,7 @@ define(['KB'],function(kb){
         _end = "}}",
         _pipe = "|",
         _events = {
-          unknowns:[]
+          unknown:[]
         }
     
     function KonnektMP(node)
@@ -49,94 +49,144 @@ define(['KB'],function(kb){
     /* returns a bind map object in relation to the passed nodes */
     KonnektMP.prototype.map = function(node)
     {
+      var binds = {};
+
+      /* This method is a recursive childnode search, searches for text nodes and attributes for getting binds */
       function loopMap(childNodes)
       {
-        var binds = [];
         for(var x=0,len=childNodes.length;x<len;x++)
         {
+          /* make sure we dont look at other components, but only this one */
           if(childNodes[x].kb_maps === undefined)
           {
-            childNodes[x].kb_mapper = el;
+            /* add mapper refrence so from any node we can always go back to root */
+            childNodes[x].kb_mapper = node;
+
+            /* check if node is a text node */
             if(childNodes[x].nodeType === 3)
             {
-              binds = binds.concat(bindTexts(childNodes[x]));
+              bindTexts(childNodes[x],binds);
             }
+
+            /* if it isnt then only check attributes for binds */
             else
             {
-              binds = binds.concat(bindAttrs(childNodes[x]));
+              bindAttrs(childNodes[x],binds);
             }
-            if(childNodes[x].childNodes && childNodes[x].childNodes.length !== 0) binds = binds.concat(loopMap(childNodes[x].childNodes));
+
+            /* if this childnode has other children nodes then we run recursive */
+            if(childNodes[x].childNodes && childNodes[x].childNodes.length !== 0) loopMap(childNodes[x].childNodes);
           }
         }
-        return binds;
       }
+      loopMap(node.childNodes);
+      return binds;
+    }
 
-      return loopMap(node.childNodes);
+    /* allows appending a new filter to a bind with a requested key */
+    KonnektMP.prototype.addFilter = function(name,filterName)
+    {
+      if(this.maps[name] !== undefined)
+      {
+        this.maps[name].forEach(function(map){
+          map.filters.push(filterName);
+        });
+      }
+      return this;
+    }
+
+    /* removes a filter name from a desired bind with requested key */
+    KonnektMP.prototype.removeFilter = function(name,filterName)
+    {
+      if(this.maps[name] !== undefined)
+      {
+        this.maps[name].forEach(function(map){
+          map.filters.splice(this.maps[name].filters.indexOf(filterName),1);
+        })
+      }
+      return this;
+    }
+
+    /* allows for swapping one filter out for another on a bind */
+    KonnektMP.prototype.swapFilter = function(name,oldFilter,newFilter)
+    {
+      if(this.maps[name] !== undefined)
+      {
+        this.maps[name].forEach(function(map){
+          map.filters.splice(this.maps[name].filters.indexOf(oldFilter),1,newFilter);
+        })
+      }
+      return this;
     }
 
     /* Closure based helper methods */
 
-    function bindTexts(node)
+    /* checks for bind matches in a text node and parses inserts them into the binds object for returning */
+    function bindTexts(node,binds)
     {
+      /* the actual text */
       var text = node.textContent,
-          isUnknown = (node instanceof HTMLUnknownElement),
-          textBinds = [];
 
+          /* if the parent element is a component then we need to treat it as a single instance map */
+          isUnknown = (node.parentElement instanceof HTMLUnknownElement);
+
+      /* matches an array of _start and end looking for binds in the text */
       if(text.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
       {
+        /*specifies bind type: component|for|text */
         var type = (isUnknown ? 'component' : ((text.indexOf('for') !== -1 && text.indexOf('loop') !== undefined) ? 'for' : 'text')),
+
+            /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
             binder = getBindObject(type,text,splitText(text),(isUnknown ? '' : 'textContent'),'textContent',node,node.parentElement);
+
+        /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
         for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
         {
-          if(binder.prototype.bindText[x].indexOf(_start) === 0) textBinds.push(new binder(binder.prototype.bindText[x]));
-        }
-      }
-
-      if(isUnknown)
-      {
-        if(node.parentElement.kb_maps !== undefined)
-        {
-          node.parentElement.kb_maps.concat(textBinds);
-        }
-        else
-        {
-          node.parentElement.kb_maps = textBinds;
-        }
-      }
-      return textBinds;
-    }
-    
-    function bindAttrs(node)
-    {
-      var attrs = node.attributes,
-          isUnknown = (node instanceof HTMLUnknownElement),
-          attrBinds = [];
-
-      for(var i=0,lenn=attrs.length;i<lenn;i++)
-      {
-        if(attrs[i].value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
-        {
-          var type = (isUnknown ? 'component' : 'attribute'),
-              binder = getBindObject(type,attrs[i].value,splitText(attrs[i].value),(isUnknown ? '' : attrs[i].name),'value',attrs[i],node);
-          for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
+          /* if this is a bind */
+          if(binder.prototype.bindText[x].indexOf(_start) === 0)
           {
-            if(binder.prototype.bindText[x].indexOf(_start) === 0) attrBinds.push(new binder(binder.prototype.bindText[x]));
+            /* create new bind object and attach to the binds list for returning */
+            var bind = new binder(binder.prototype.bindText[x]);
+            if(binds[bind.key] === undefined) binds[bind.key] = [];
+            binds[bind.key].push(bind);
           }
         }
       }
+    }
+    
+    function bindAttrs(node,binds)
+    {
+      /* all attributes of the node */
+      var attrs = node.attributes,
 
-      if(isUnknown)
+          /* if the parent element is a component then we need to treat it as a single instance map */
+          isUnknown = (node instanceof HTMLUnknownElement);
+
+      for(var i=0,lenn=attrs.length;i<lenn;i++)
       {
-        if(node.kb_maps !== undefined)
+        /* matches an array of _start and end looking for binds in the attribute value */
+        if(attrs[i].value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
         {
-          node.kb_maps.concat(attrBinds);
-        }
-        else
-        {
-          node.kb_maps = attrBinds;
+          /*specifies bind type: component|attribute */
+          var type = (isUnknown ? 'component' : 'attribute'),
+
+              /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
+              binder = getBindObject(type,attrs[i].value,splitText(attrs[i].value),(isUnknown ? '' : attrs[i].name),'value',attrs[i],node);
+
+          /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
+          for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
+          {
+            /* if this is a bind */
+            if(binder.prototype.bindText[x].indexOf(_start) === 0)
+            {
+              /* create new bind object and attach to the binds list for returning */
+              var bind = new binder(binder.prototype.bindText[x]);
+              if(binds[bind.key] === undefined) binds[bind.key] = [];
+              binds[bind.key].push(bind);
+            }
+          }
         }
       }
-      return attrBinds;
     }
     
     /* Mapping Objects */
@@ -159,7 +209,7 @@ define(['KB'],function(kb){
 
         /* This handles value setting of the property, by setting this the dom is automatically updated */
         Object.defineProperties(this,{
-          value:setBindDescriptor(this.get,this.set,true),
+          value:setBindDescriptor(this.valget,this.valset,true),
           _value:setDescriptor("",true)
         });
 
@@ -192,8 +242,8 @@ define(['KB'],function(kb){
 
       /* define prototypes */
       Object.defineProperties(bind.prototype,{
-        get:setDescriptor(bindGet),
-        set:setDescriptor(bindSet),
+        valget:setDescriptor(bindGet),
+        valset:setDescriptor(bindSet),
         refresh:setDescriptor(refresh),
         connect:setDescriptor(connect),
         unsync:setDescriptor(unsync),
@@ -206,8 +256,8 @@ define(['KB'],function(kb){
         bindProperty:setDescriptor(prop),
         bindTarget:setDescriptor(target),
         element:setDescriptor(element),
-        _data:setBindDescriptor({},true),
-        filters:setBindDescriptor({},true)
+        _data:setDescriptor({},true),
+        filters:setDescriptor({},true)
       });
 
       return bind
@@ -491,7 +541,7 @@ define(['KB'],function(kb){
     }
     
     /* filters out names of unregistered elements from a template string */
-    function getUnknowns(template)
+    function getUnknown(template)
     {
       /* run regex match on all </end tags> */
       var matched = template.match(_reNodes)
@@ -499,14 +549,15 @@ define(['KB'],function(kb){
 
         /* remove '</' and '>' chars from string to leave just the name of the node */
         return k.replace(/[<\/>]/g,"");
-      })
-      .filter(function(k,i){
+      });
+
+      matched.filter(function(k,i){
         /* filter out default elements and duplicates as well as components that are already registered */
         return ((document.createElement(k) instanceof HTMLUnknownElement) && (matched.indexOf(k,(i+1)) === -1) && _templates[k] === undefined);
       });
       
       /* if there are unregistered components run global event for registration */
-      if(matched.length !== 0) onEvents('unknown',new Event('unknown',matched));
+      if(matched.length !== 0) onEvent('unknown',new Event('unknown',matched));
       return matched;
     }
 
@@ -524,7 +575,7 @@ define(['KB'],function(kb){
         _templates[name] = template;
 
         /* unregistered components can be loaded via globalized listener on registration */
-        getUnknowns(template);
+        getUnknown(template);
       }
       else
       {
@@ -562,7 +613,7 @@ define(['KB'],function(kb){
       startChars:setDescriptor(startChars),
       endChars:setDescriptor(endChars),
       pipeChars:setDescriptor(pipeChars),
-      getUnknowns:setDescriptor(getUnknowns),
+      getUnknown:setDescriptor(getUnknown),
       isRegistered:setDescriptor(isRegistered),
       register:setDescriptor(register),
       addEventListener:setDescriptor(addEventListener),
