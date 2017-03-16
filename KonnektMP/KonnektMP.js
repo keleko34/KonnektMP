@@ -10,38 +10,471 @@ define(['KB'],function(kb){
         _start = "{{",
         _end = "}}",
         _pipe = "|",
-        _filters = {},
-        _actions = {
-          mapper:[],
-          unsync:[],
-          map:[],
-          update:[]
-        };
-    
-    /* Events need to be localized to maps and not global, easier chains */
+        _events = {
+          unknown:[]
+        }
     
     function KonnektMP(node)
     {
-      /* Main constructor takes node and splices into template and returns finished node */
-      var _name = node.tagName.toLowerCase(),
-          _template = getTemplate(_name),
-          _wrapper = document.createElement('div');
+      /* Name of the component */
+      this.name = node.tagName.toLowerCase();
       
-      /* Wrapper */
-      _wrapper.className = _name+"__Wrapper";
-      _wrapper.innerHTML = _template;
+      /* template of the component */
+      this.template = _templates[name] || '<div class="missing_component">Unknown Component</div>';
       
-      return {
-        node:node,
-        wrapper:_wrapper,
-        unkowns:getUnkownTemplates(_wrapper.innerHTML),
-        maps:mapTemplate(_wrapper),
-        unloaded:getUnregisteredTenplates(_wrapper.innerHTML)
-      };
+      /* original node */
+      this.node = node;
+
+      /* document fragment to prevent reflow for faster browser rendering */
+      this.fragment = document.createDocumentFragment();
+
+      /* wrapper div for placing components inside */
+      this.wrapper = document.createElement('div');
+
+      /* set wrapper html and define class */
+      this.wrapper.className = "Wrapper Wrapper__"+this.name;
+      this.wrapper.innerHTML = this.template;
+
+      /* append wrapper to fragment for prep to append to dom */
+      this.fragment.appendChild(this.wrapper);
+
+      /* map nodes with their bindings */
+      this.maps = this.map(this.wrapper);
+
+      this.wrapper.kb_maps = this.maps;
     }
     
-    /* REGION Events */
-    function actionObject(type,data)
+    /* Prototypes */
+
+    /* returns a bind map object in relation to the passed nodes */
+    KonnektMP.prototype.map = function(node)
+    {
+      var binds = {};
+
+      /* This method is a recursive childnode search, searches for text nodes and attributes for getting binds */
+      function loopMap(childNodes)
+      {
+        for(var x=0,len=childNodes.length;x<len;x++)
+        {
+          /* make sure we dont look at other components, but only this one */
+          if(childNodes[x].kb_maps === undefined)
+          {
+            /* add mapper refrence so from any node we can always go back to root */
+            childNodes[x].kb_mapper = node;
+
+            /* check if node is a text node */
+            if(childNodes[x].nodeType === 3)
+            {
+              bindTexts(childNodes[x],binds);
+            }
+
+            /* if it isnt then only check attributes for binds */
+            else
+            {
+              bindAttrs(childNodes[x],binds);
+            }
+
+            /* if this childnode has other children nodes then we run recursive */
+            if(childNodes[x].childNodes && childNodes[x].childNodes.length !== 0) loopMap(childNodes[x].childNodes);
+          }
+        }
+      }
+      loopMap(node.childNodes);
+      return binds;
+    }
+
+    /* allows appending a new filter to a bind with a requested key */
+    KonnektMP.prototype.addFilter = function(name,filterName)
+    {
+      if(this.maps[name] !== undefined)
+      {
+        this.maps[name].forEach(function(map){
+          map.filters.push(filterName);
+        });
+      }
+      return this;
+    }
+
+    /* removes a filter name from a desired bind with requested key */
+    KonnektMP.prototype.removeFilter = function(name,filterName)
+    {
+      if(this.maps[name] !== undefined)
+      {
+        this.maps[name].forEach(function(map){
+          map.filters.splice(this.maps[name].filters.indexOf(filterName),1);
+        })
+      }
+      return this;
+    }
+
+    /* allows for swapping one filter out for another on a bind */
+    KonnektMP.prototype.swapFilter = function(name,oldFilter,newFilter)
+    {
+      if(this.maps[name] !== undefined)
+      {
+        this.maps[name].forEach(function(map){
+          map.filters.splice(this.maps[name].filters.indexOf(oldFilter),1,newFilter);
+        })
+      }
+      return this;
+    }
+
+    /* Closure based helper methods */
+
+    /* checks for bind matches in a text node and parses inserts them into the binds object for returning */
+    function bindTexts(node,binds)
+    {
+      /* the actual text */
+      var text = node.textContent,
+
+          /* if the parent element is a component then we need to treat it as a single instance map */
+          isUnknown = (node.parentElement instanceof HTMLUnknownElement);
+
+      /* matches an array of _start and end looking for binds in the text */
+      if(text.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
+      {
+        /*specifies bind type: component|for|text */
+        var type = (isUnknown ? 'component' : ((text.indexOf('for') !== -1 && text.indexOf('loop') !== undefined) ? 'for' : 'text')),
+
+            /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
+            binder = getBindObject(type,text,splitText(text),(isUnknown ? '' : 'textContent'),'textContent',node,node.parentElement);
+
+        /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
+        for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
+        {
+          /* if this is a bind */
+          if(binder.prototype.bindText[x].indexOf(_start) === 0)
+          {
+            /* create new bind object and attach to the binds list for returning */
+            var bind = new binder(binder.prototype.bindText[x]);
+            if(binds[bind.key] === undefined) binds[bind.key] = [];
+            binds[bind.key].push(bind);
+          }
+        }
+      }
+    }
+    
+    function bindAttrs(node,binds)
+    {
+      /* all attributes of the node */
+      var attrs = node.attributes,
+
+          /* if the parent element is a component then we need to treat it as a single instance map */
+          isUnknown = (node instanceof HTMLUnknownElement);
+
+      for(var i=0,lenn=attrs.length;i<lenn;i++)
+      {
+        /* matches an array of _start and end looking for binds in the attribute value */
+        if(attrs[i].value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
+        {
+          /*specifies bind type: component|attribute */
+          var type = (isUnknown ? 'component' : 'attribute'),
+
+              /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
+              binder = getBindObject(type,attrs[i].value,splitText(attrs[i].value),(isUnknown ? '' : attrs[i].name),'value',attrs[i],node);
+
+          /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
+          for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
+          {
+            /* if this is a bind */
+            if(binder.prototype.bindText[x].indexOf(_start) === 0)
+            {
+              /* create new bind object and attach to the binds list for returning */
+              var bind = new binder(binder.prototype.bindText[x]);
+              if(binds[bind.key] === undefined) binds[bind.key] = [];
+              binds[bind.key].push(bind);
+            }
+          }
+        }
+      }
+    }
+    
+    /* Mapping Objects */
+
+    /* returns a new instancer of a bindObject, that way we can keep prototypes among multiple binds */
+    function getBindObject(type,text,bindtext,listener,prop,target,element)
+    {
+      function bind(b)
+      {
+        var _forData = splitFor(b),
+            self = this;
+        this.key = (type !== 'for' ? splitKey(b) : _forData[0]);
+        this.filterNames = splitFilters(b);
+        this.component = (type !== 'for' ? _forData[1] : undefined);
+
+        /* updates prototype bind text to have the local object inside the array in replacement of string text */
+        this.__proto__.bindText = this.__proto__.bindText.map(function(v){
+          return (v === b ? this : v);
+        });
+
+        /* This handles value setting of the property, by setting this the dom is automatically updated */
+        Object.defineProperties(this,{
+          value:setBindDescriptor(this.valget,this.valset,true),
+          _value:setDescriptor("",true)
+        });
+
+        /* used to update a data set if it was connected */
+        this.updateData = function(e)
+        {
+          if(self.isConnected && self._data)
+          {
+            if(typeof e === 'string') e = {value:e};
+            if(typeof self._data.stopChange === 'function')
+            {
+              self._data.stopChange()
+              .set(self.key,e.value);
+            }
+            else
+            {
+              /* **FUTURE** allow standard object setting */
+            }
+          }
+        }
+
+        /* used to update the dom if the data set has events that can be connected */
+        this.updateDom = function(e)
+        {
+          self.element.stopChange();
+          if(typeof e === 'string') e = {value:e};
+          self.value = e.value;
+        }
+      }
+
+      /* define prototypes */
+      Object.defineProperties(bind.prototype,{
+        valget:setDescriptor(bindGet),
+        valset:setDescriptor(bindSet),
+        refresh:setDescriptor(refresh),
+        connect:setDescriptor(connect),
+        unsync:setDescriptor(unsync),
+        isSynced:setDescriptor(isSynced),
+        type:setDescriptor(type),
+        text:setDescriptor(text,true),
+        bindText:setDescriptor(bindtext),
+        bindNames:setDescriptor(splitBindNames(bindtext)),
+        bindListener:setDescriptor(listener),
+        bindProperty:setDescriptor(prop),
+        bindTarget:setDescriptor(target),
+        element:setDescriptor(element),
+        _data:setDescriptor({},true),
+        filters:setDescriptor({},true)
+      });
+
+      return bind
+    }
+    
+    /* Bind Prototypes */
+    
+    /* used for value to get current value */
+    function bindGet()
+    {
+      return this._value;
+    }
+    
+    /* used for value to set and refresh current value */
+    function bindSet(v)
+    {
+      this._value = (typeof v === 'string' && this.isSynced() ? v : this._value);
+      this.refresh();
+    }
+    
+    /* checks if the bind element has been removed from the dom */
+    function isSynced()
+    {
+      /* parentElement will 'null' if this element is no longer on the dom */
+      if(!this.element.parentElement) this.unsync();
+      return !!this.element.parentElement;
+    }
+    
+    /* refreshes the tied dom value */
+    function refresh()
+    {
+      var self = this;
+      /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
+      this.target[this.bindProperty] = this.bindText.reduce(function(c,v){
+        /* while reducing bindTexts if index is standard string then attach, else we need to run value through filters prior to attaching */
+        return c+(typeof v === 'string' ? v : v.filterNames.reduce(function(v,f){
+          if(self.filters !== undefined)
+          {
+            if(self.filters[f] !== undefined)
+            {
+              return self.filters[f](v);
+            }
+            else
+            {
+              console.warn("there is no filter by the name %o in the data model filters %o",f,Object.keys(self.filters));
+              return v;
+            }
+          }
+          console.error('Somehow filters object was not added to the mapping via .connect() method, please see dev')
+          return v;
+        },v._value));
+      },"");
+      return this;
+    }
+    
+    /* connects a data set up to the current map */
+    function connect(vm)
+    {
+      /* sets local data passed data and sets local filters to data filters */
+      this._data = vm;
+      this.filters = (vm.filters !== undefined ? vm.filters : this.filters);
+
+      for(var x=0,len=this.bindNames.length;x<len;x++)
+      {
+        /* as we loop throught the bind names we check if 'konnektdt' lib is being used, if so we add the appropriate listeners for the data */
+        if(this._data.addDataUpdateListener)
+        {
+          /* if data set does not exist we create it */
+          if(!this._data.exists(this.bindNames[x])) this._data.add(this.bindNames[x],(this._value));
+          this._data.addDataUpdatelistener(this.bindNames[x],this.updateDom);
+        }
+        else
+        {
+          /* **FUTURE** allow standard object setting */
+        }
+      }
+      this.element.addAttrUpdateListener(this.listener,this.updateData);
+      return this;
+    }
+    
+    /* acts like a deconstructor if the element happens to be unsynced */
+    function unsync()
+    {
+      /* we need to remove all data listeners if they exist so they are not ran on update */
+      for(var x=0,len=this.bindNames.length;x<len;x++)
+      {
+        if(this._data.removeDataUpdateListener) this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+      }
+      /* also remove element listeners */
+      this.element.removeAttrUpdateListener(this.listener,this.updateData);
+      /* clear all tied shared objects so GC can pick up this object for destroying */
+      this._data = null;
+      this.element = null;
+      this.filters = null;
+      this.bindText = null;
+      this.bindNames = null;
+      return this;
+    }
+    
+    /* Text Splitters */
+    
+    /* returns an array of standard text and bindings, binding texts are later converted to bind objects
+       EXAMPLE::
+        string: "Hello {{name}}, {{greeting}}"
+        return: ["Hello ", "{{name}}", ", ", "{{greeting}}"]
+    */
+    function splitText(s)
+    {
+      /* splits the string by _start and _end: ["Hello ","{{","name","}}",", ","{{","greeting","}}"] */
+      return s.split(new RegExp('('+_start.split('').join('\\')+')(.*?)('+_end.split('').join('\\')+')','g'))
+      /* remaps values to have the _start and _end brackets: ["Hello ","{{","{{name}}","}}",", ","{{","{{greeting}}","}}"]*/
+      .map(function(v,i,arr){
+        return ((arr[(i-1)] === _start) ? (_start+v+_end) : v);
+      })
+      /* filter out single _start and _end entries: ["Hello ","{{name}}",", ","{{greeting}}"]*/
+      .filter(function(v,i,arr){return (v.length !== 0 && v !== _start && v !== _end && v.length !== 0);});
+    }
+    
+    /* returns an array of standard bind names
+       EXAMPLE::
+        splitText: ["Hello ", "{{name}}", ", ", "{{greeting}}"]
+        return: ["name","greeting"]
+    */
+    function splitBindNames(splitTexts)
+    {
+      /* filter out all non bind strings: ["{{name}}","{{greeting}}"]*/
+      splitTexts.filter(function(v){
+        return (v.indexOf(_start) !== -1 && v.indexOf(_end) !== -1);
+      })
+      /* modify string to standard key names: ["name","greeting"]*/
+      .map(function(v){
+        return splitKey(v);
+      });
+    }
+
+    /* takes a bind and returns just the name/key
+       EXAMPLE::
+        string: "{{name | toUpperCase}}"
+        return: "name"
+    */
+    function splitKey(b)
+    {
+        /* removes _start and _end from the string: "name | toUpperCase" */
+        return b.replace(new RegExp('['+_start+_end+']','g'),'')
+        /* removes pipe and all that follows: "name "*/
+        .replace(new RegExp('\\'+_pipe.split('').join('\\')+'(.*)'),'')
+        /* removes any remaining spaces: "name" */
+        .replace(/\s/g,'');
+    }
+    
+    /* takes a bind and returns array of the filter names
+       EXAMPLE::
+        string: "{{name | toUpperCase, duplicate}}"
+        return: ["toUpperCase","duplicate"]
+    */
+    function splitFilters(b)
+    {
+        if(b.indexOf(_pipe) !== -1)
+        {
+          /* remove _end characters from string: "{{name | toUpperCase, duplicate"  */
+          return b.replace(new RegExp('['+_end+']','g'),'')
+          /* removes everything before the _pipe characters: " toUpperCase, duplicate"*/
+          .replace(new RegExp('(.*?)(\\'+_pipe.split('').join('\\')+')'),'')
+          /* removes all spaces "toUpperCase,duplicate"*/
+          .replace(/\s/g,'')
+          /* splits into array nased on ',': ["toUpperCase","duplicate"] */
+          .split(',');
+        }
+        return [];
+    }
+
+    /* takes a for bind and returns array of key and component
+       EXAMPLE::
+        string: "{{for items loop listitem | hasName}}"
+        return: ["items","listitem"]
+    */
+    function splitFor(b)
+    {
+        if(b.indexOf('for') !== -1)
+        {
+          /* removes _start and _end characters: "for items loop listitem | hasName" */
+          return b.replace(new RegExp('['+_start+_end+']','g'),'')
+          /* removes pipe and all text after it: "for items loop listitem "*/
+          .replace(new RegExp('\\'+'|'.split('').join('\\')+'(.*)'),'')
+          /* removes all empty spaces:  "foritemslooplistitem"*/
+          .replace(/\s/g,'')
+          /* splits the string removing 'for' and 'loop' leaving only key and component in an array: ["items","listitem"]*/
+          .split(/for(.*?)loop/)
+          /* in case any trailing empty strings are in array */
+          .filter(function(v){return v.length !== 0;});
+        }
+        return [];
+    }
+    
+    /* returns a descriptor object */
+    function setDescriptor(value,writable,redefinable)
+    {
+      return {
+          value:value,
+          writable:!!writable,
+          enumerable:false,
+          configurable:!!redefinable
+      }
+    }
+    
+    function setBindDescriptor(get,set,enumerable,redefinable)
+    {
+      return {
+        get:get,
+        set:set,
+        enumerable:!!enumerable,
+        configurable:!!redefinable
+      }
+    }
+    
+    /* standard event object, allows stopPropagation, preventDefault, event type, and passed data */
+    function eventObject(type,data)
     {
       this.preventDefault = function()
       {
@@ -54,395 +487,141 @@ define(['KB'],function(kb){
       this.type = type;
       this.data = data;
     }
-
-    function _onaction(a)
+    
+    /* runs the appropriate bus event */
+    function onEvent(key,eventObject)
     {
-      var _listeners = _actions[a.type];
+      var _listeners = _events[key];
       for(var x=0,len=_listeners.length;x<len;x++)
       {
-        _listeners[x](a);
-        if(!a._stopPropogation) break;
+        _listeners[x](eventObject);
+
+        /* if stopPropogation() method was called this stops all future listeners */
+        if(!eventObject._stopPropogation) break;
       }
-      return a._preventDefault;
+      return eventObject._preventDefault;
     }
     
-    function addActionListener(key,func)
+    /* Library based methods for use globally among all components */
+
+    /* Globalized Event Listeners */
+
+    /* adds an event listener with the appropriate key */
+    function addEventListener(key,func)
     {
-      if(_actions[key] !== undefined)
+      if(_events[key] !== undefined)
       {
-        _actions[key].push(func);
+        _events[key].push(func);
+      }
+      else
+      {
+        console.error("Class: KonnektMP Method: 'addEventListener', No event exists with the name %o",key);
       }
       return this;
     }
     
-    function removeActionListener(key,func)
+    /* removes event listener, dependent on key and function being the same */
+    function removeEventListener(key,func)
     {
-      if(_actions[key] !== undefined)
+      if(_events[key] !== undefined)
       {
-        for(var x=0,len=_actions[key].length;x<len;x++)
+        for(var x=0,len=_events[key].length;x<len;x++)
         {
-          if(_actions[key][x].toString() === func.toString())
+          if(_events[key][x].toString() === func.toString())
           {
-            _actions[key].splice(x,1);
+            _events[key].splice(x,1);
           }
         }
       }
+      else
+      {
+        console.error("Class: KonnektMP Method: 'removeEventListener', No event exists with the name %o",key);
+      }
       return this;
     }
     
-    /* ENDREGION Events */
-    
-    function setDescriptor(value,writable,redefinable)
+    /* filters out names of unregistered elements from a template string */
+    function getUnknown(template)
     {
-      return {
-          value:value,
-          writable:!!writable,
-          enumerable:false,
-          configurable:!!redefinable
-      }
-    }
-    
-    /* REGION Templating */
-    
-    function getUnkownTemplates(template)
-    {
-      var matched = template.match(_reNodes);
-      return matched.map(function(k){
+      /* run regex match on all </end tags> */
+      var matched = template.match(_reNodes)
+      .map(function(k){
+
+        /* remove '</' and '>' chars from string to leave just the name of the node */
         return k.replace(/[<\/>]/g,"");
-      })
-      .filter(function(k,i){
-        return ((document.createElement(k) instanceof HTMLUnknownElement) && (matched.indexOf(k,(i+1)) === -1));
       });
-    }
-    
-    function getUnregisteredTenplates(template)
-    {
-      return getUnkownTemplates(template)
-      .filter(function(k,i){
-        return (_templates[k] === undefined);
+
+      matched.filter(function(k,i){
+        /* filter out default elements and duplicates as well as components that are already registered */
+        return ((document.createElement(k) instanceof HTMLUnknownElement) && (matched.indexOf(k,(i+1)) === -1) && _templates[k] === undefined);
       });
+      
+      /* if there are unregistered components run global event for registration */
+      if(matched.length !== 0) onEvent('unknown',new Event('unknown',matched));
+      return matched;
     }
-    
+
+    /* checks if a component name has been defined */
     function isRegistered(name)
     {
       return (_templates[name] !== undefined);
     }
     
+    /* registers template to a given name and fires unregistered components event if any are found */
     function register(name,template)
     {
       if(_templates[name] === undefined)
       {
         _templates[name] = template;
+
+        /* unregistered components can be loaded via globalized listener on registration */
+        getUnknown(template);
       }
       else
       {
-        console.error('A template with the name',name,' already exists');
+        console.error("Class: KonnektMP Method: 'register', A template by the name %o already exists",name);
       }
-      return getUnkownTemplates(template);
+      return this;
     }
-    
-    function getTemplate(name)
+
+    /* searched start characters for looking for binds */
+    function startChars(v)
     {
-      return _templates[name];
+      if(v === undefined) return _start;
+      _start = (typeof v === 'string' ? v : _start);
+      return this;
     }
-    
-    Object.defineProperties(KonnektMP,{
-      getUnkownTemplates:setDescriptor(getUnkownTemplates),
-      getUnregisteredTenplates:setDescriptor(getUnregisteredTenplates),
-      isRegistered:setDescriptor(isRegistered),
-      register:setDescriptor(register),
-      getTemplate:setDescriptor(getTemplate)
-    });
-    
-    /* ENDREGION Templating */
-    
-    /* REGION Mapping */
-    
-    function mapObject(text,texts,bindTexts,type,binds,filters,target,prop,element,parent,listener)
+
+    /* searched end characters for looking for binds */
+    function endChars(v)
     {
-      this.text = text;
-      this.texts = texts;
-      this.bindTexts = bindTexts;
-      this.type = type;
-      this.binds = binds;
-      this.filters = filters;
-      this.target = target;
-      this.prop = prop;
-      this.element = element;
-      this.listener = listener;
-      this.parent = parent;
+      if(v === undefined) return _end;
+      _end = (typeof v === 'string' ? v : _end);
+      return this;
     }
 
-    function bindObject(name,text,value,filters,map)
+    /* searched pipe characters for looking for bind settings inside the bind */
+    function pipeChars(v)
     {
-      this.key = name;
-      this.text = text;
-      this.value = value;
-      this.filters = filters;
+      if(v === undefined) return _pipe;
+      _pipe = (typeof v === 'string' ? v : _pipe);
+      return this;
     }
-    
-      /* REGION Splits */
-      function splitText(s)
-      {
-        return s.split(new RegExp('('+_start.split('').join('\\')+')(.*?)('+_end.split('').join('\\')+')','g'))
-        .map(function(v,i,arr){
-          return ((arr[(i-1)] === _start) ? (_start+v+_end) : v);
-        })
-        .filter(function(v,i,arr){return (v.length !== 0 && v !== _start && v !== _end && v.length !== 0);});
-      }
 
-      function splitBinds(s)
-      {
-        return s.split(new RegExp('('+_start.split('').join('\\')+')(.*?)('+_end.split('').join('\\')+')','g'))
-        .filter(function(v,i,arr){return (v !== _start && v !== _end);});
-      }
-
-      function splitMaps(s)
-      {
-        return s.split(new RegExp('('+_start.split('').join('\\')+')(.*?)('+_end.split('').join('\\')+')','g'))
-        .filter(function(v,i,arr){return (arr[(i-1)] === _start);});
-      }
-
-      function splitKey(b)
-      {
-        return b.replace(new RegExp('\\'+_pipe.split('').join('\\')+'(.*)'),'').replace(/\s/g,'');
-      }
-
-      function splitFilter(b)
-      {
-        if(b.indexOf(_pipe) !== -1)
-        {
-          return b.replace(new RegExp('(.*?)(\\'+_pipe.split('').join('\\')+')'),'').replace(/\s/g,'').split(',');
-        }
-        return [];
-      }
-
-      function splitFor(b)
-      {
-        if(b.indexOf('for') !== -1)
-        {
-          var split = (b.replace(/\s/g,'').split(/for(.*?)loop/).filter(function(v){return v.length !== 0;}));
-          return {
-            key:split[0],
-            component:splitKey(split[1]),
-            filters:splitFilter(b)
-          };
-        }
-        return null;
-      }
-
-      /* ENDREGION Splits */
-    
-      /* REGION charMaps */
-      function startChars(v)
-      {
-        if(v === undefined){
-          return _start;
-        }
-        _start = (typeof v === 'string' && v !== _end ? v : _start);
-        return this;
-      }
-
-      function endChars(v)
-      {
-        if(v === undefined){
-          return _end;
-        }
-        _end = (typeof v === 'string' && v !== _start ? v : _end);
-        return this;
-      }
-
-      function pipeChars(v)
-      {
-        if(v === undefined){
-          return _pipe;
-        }
-        _pipe = (typeof v === 'string' && v !== _start && v !== _end ? v : _pipe);
-        return this;
-      }
-      
-      /* ENDREGION charMaps */
-    
-    function connect(obj)
-    {
-      
-    }
-    
-    function map(el)
-    {
-      function loopMap(childNodes)
-      {
-        var binds = [];
-        for(var x=0,len=childNodes.length;x<len;x++)
-        {
-          if(childNodes[x].kb_maps === undefined)
-          {
-            childNodes[x].kb_mapper = el;
-            if(childNodes[x].nodeType === 3)
-            {
-              binds = binds.concat(bindTexts(childNodes[x]));
-            }
-            else
-            {
-              binds = binds.concat(bindAttrs(childNodes[x]));
-            }
-            if(childNodes[x].childNodes && childNodes[x].childNodes.length !== 0) binds = binds.concat(loopMap(childNodes[x].childNodes));
-          }
-        }
-        return binds;
-      }
-      return loopMap(el.childNodes);
-    }
-    
-    function checkUnsynced(binds)
-    {
-      for(var x=0,len=binds.length;x<len;x++)
-      {
-        if(binds[x].element.parentElement === null)
-        {
-          var a = new actionObject('unsync',binds[x]);
-          _onaction(a);
-          binds.splice(x,1);
-          len = binds.length;
-        }
-      }
-      return binds;
-    }
-    
-    function bindAttrs(node)
-    {
-      var attrs = node.attributes,
-          isUnkown = (node instanceof HTMLUnknownElement),
-          attrBinds = [];
-
-      for(var i=0,lenn=attrs.length;i<lenn;i++)
-      {
-        if(attrs[i].value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
-        {
-          var maps = splitMaps(attrs[i].value),
-              texts = splitText(attrs[i].value),
-              bt = splitBinds(attrs[i].value),
-              a = new actionObject('mapper',{});
-            var mp = new mapObject(attrs[i].value,texts,[],(isUnkown ? 'component' : 'attribute'),{},{},(isUnkown ? undefined : attrs[i]),attrs[i].name,(isUnkown ? node.parentElement : node),(isUnkown ? undefined : node.parentElement),(isUnkown ? undefined : attrs[i].name));
-            mp.binds = maps.reduce(function(obj,v,i,arr){
-              a.type = 'map';
-              a.data = new bindObject(splitKey(v),v,"",splitFilter(v),mp);
-              bt[bt.indexOf(v)] = a.data;
-              if(_onaction(a) !== true) obj[a.data.key] = a.data;
-              return obj;
-            },{});
-            mp.bindTexts = bt.filter(function(v){return (typeof v === 'object' || v.length !== 0)});
-            a.type = 'mapper';
-            a.data = mp;
-            if(_onaction(a) !== true) attrBinds.push(a.data);
-        }
-      }
-
-      if(isUnkown) node.kb_maps = attrBinds;
-      return attrBinds;
-    }
-    
-    function bindTexts(node)
-    {
-      if(node.textContent.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
-      {
-        var maps = splitMaps(node.textContent),
-            texts = splitText(node.textContent),
-            bt = splitBinds(node.textContent),
-            a = new actionObject('mapper',{});
-
-        if(maps.length === 1 && maps[0].indexOf('for') !== -1)
-        {
-          /* For Mapping */
-          a.data = new mapObject(node.textContent,texts,[],"for",splitFor(maps[0]),{},node,undefined,node,node.parentElement);
-          if(_onaction(a) !== true)
-          {
-            return [a.data];
-          }
-        }
-        else
-        {
-            /* Text mapping */
-            var mp = new mapObject(node.textContent,texts,[],'text',{},{},node,'textContent',node,node.parentElement,'textContent');
-            mp.binds = maps.reduce(function(obj,v,i,arr){
-              a.type = 'map';
-              a.data = new bindObject(splitKey(v),v,"",splitFilter(v),mp);
-              bt[bt.indexOf(v)] = a.data;
-              if(_onaction(a) !== true) obj[splitKey(v)] = a.data;
-              return obj;
-            },{});
-            mp.bindTexts = bt;
-            a.type = 'mapper';
-            a.data = mp;
-            if(_onaction(a) !== true) return [a.data];
-        }
-      }
-      return [];
-    }
-    
-    function mapTemplate(node)
-    {
-      function stopHTML(e)
-      {
-        if(!e.stopChange)
-        {
-          if(e.attr !== 'replaceWith')
-          {
-            if(e.child.children.length !== 0)
-            {
-              e.preventDefault();
-            }
-            else
-            {
-              if(e.attr !== 'textContent')
-              {
-                e.preventDefault();
-                if(e.attr === 'innerHTML')
-                {
-                  e.child.textContent = e.value;
-                }
-              }
-            }
-          }
-          else if(!(e.child instanceof HTMLUnknownElement))
-          {
-            e.preventDefault();
-          }
-        }
-        else
-        {
-          e.child._stopChange = undefined;
-          e.stopChange = undefined;
-        }
-      }
-      
-      node.addAttrListener('html',stopHTML)
-      .addChildAttrListener('html',stopHTML)
-      .addChildAttrUpdateListener('html',function(e){
-        checkUnsynced(node.kb_maps);
-      })
-      .addChildAttrListener('events',function(e){
-        if(!!e.target.getAttribute(e.attr))
-        {
-          e.preventDefault();
-          e.target.setAttribute(e.attr.replace('on',''));
-        }
-      });
-      
-      Object.defineProperty(node,'kb_maps',setDescriptor(map(node)));
-      return node.kb_maps;
-    }
-    
+    /* Assign as non changeable properties to main method for exporting */
     Object.defineProperties(KonnektMP,{
       startChars:setDescriptor(startChars),
       endChars:setDescriptor(endChars),
       pipeChars:setDescriptor(pipeChars),
-      checkUnsynced:setDescriptor(checkUnsynced),
-      mapTemplate:setDescriptor(mapTemplate),
-      mapNode:setDescriptor(map)
+      getUnknown:setDescriptor(getUnknown),
+      isRegistered:setDescriptor(isRegistered),
+      register:setDescriptor(register),
+      addEventListener:setDescriptor(addEventListener),
+      removeEventListener:setDescriptor(removeEventListener)
     });
     
-    /* ENDREGION Mapping */
+    /* Stop All HTML and setAttribute updates */
+
 
     return KonnektMP;
   }
