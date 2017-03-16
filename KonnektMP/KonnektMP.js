@@ -90,6 +90,7 @@ define(['KB'],function(kb){
       {
         this.maps[name].forEach(function(map){
           map.filters.push(filterName);
+          map.refresh();
         });
       }
       return this;
@@ -102,7 +103,8 @@ define(['KB'],function(kb){
       {
         this.maps[name].forEach(function(map){
           map.filters.splice(this.maps[name].filters.indexOf(filterName),1);
-        })
+          map.refresh();
+        });
       }
       return this;
     }
@@ -114,6 +116,7 @@ define(['KB'],function(kb){
       {
         this.maps[name].forEach(function(map){
           map.filters.splice(this.maps[name].filters.indexOf(oldFilter),1,newFilter);
+          map.refresh();
         })
       }
       return this;
