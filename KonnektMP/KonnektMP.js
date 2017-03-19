@@ -7,6 +7,8 @@ define(['KB'],function(kb){
     var _templates = {},
         _reNodes = /(<\/.*?>)/g,
         _kb = kb().call(),
+        _domevents = Object.keys(HTMLElement.prototype)
+        .filter(function(v){return v.indexOf('on') === 0}),
         _start = "{{",
         _end = "}}",
         _pipe = "|",
@@ -200,6 +202,9 @@ define(['KB'],function(kb){
     /* returns a new instancer of a bindObject, that way we can keep prototypes among multiple binds */
     function getBindObject(binds,type,text,bindtext,listener,prop,target,element)
     {
+      var isEvent = ((type === 'attribute' && _domevents.indexOf(target.name) !== -1) || (type === 'component' && target.name && _domevents.indexOf(target.name) !== -1));
+      if(isEvent) element.stopChange().removeAttribute(target.name);
+      
       function bind(b)
       {
         var _forData = splitFor(b),
@@ -208,6 +213,7 @@ define(['KB'],function(kb){
         this.filterNames = splitFilters(b);
         this.component = (type !== 'for' ? _forData[1] : undefined);
         this.id = 0;
+        this.isEvent = isEvent;
 
         /* updates prototype bind text to have the local object inside the array in replacement of string text */
         this.__proto__.bindText = this.__proto__.bindText.map(function(v){
@@ -225,7 +231,7 @@ define(['KB'],function(kb){
         {
           if(self.isConnected && self._data)
           {
-            if(typeof e === 'string') e = {value:e};
+            if(typeof e !== 'object' || !e.value) e = {value:e};
             if(typeof self._data.stopChange === 'function')
             {
               self._data.stopChange()
@@ -243,7 +249,7 @@ define(['KB'],function(kb){
         {
           if(!self.isSynced()) return;
           self.element.stopChange();
-          if(typeof e === 'string') e = {value:e};
+          if(typeof e !== 'object' || !e.value) e = {value:e};
           self.value = e.value;
         }
       }
@@ -261,8 +267,8 @@ define(['KB'],function(kb){
         text:setDescriptor(text,true),
         bindText:setDescriptor(bindtext,true),
         bindNames:setDescriptor(splitBindNames(bindtext),true),
-        bindListener:setDescriptor(listener),
-        bindProperty:setDescriptor(prop),
+        bindListener:setDescriptor((isEvent ? listener.toLowerCase() : listener)),
+        bindProperty:setDescriptor((isEvent ? target.name.toLowerCase() : prop)),
         bindTarget:setDescriptor(target,true),
         element:setDescriptor(element,true),
         _data:setDescriptor({},true),
@@ -284,7 +290,7 @@ define(['KB'],function(kb){
     /* used for value to set and refresh current value */
     function bindSet(v)
     {
-      this._value = (typeof v === 'string' && this.isSynced() ? v : this._value);
+      this._value = (this.isSynced() ? v : this._value);
       this.refresh();
     }
     
@@ -296,6 +302,49 @@ define(['KB'],function(kb){
       return !!this.element.parentElement;
     }
     
+    function filterValue(target,bindText)
+    {
+      function filter(target,bindText)
+      {
+        return bindText.reduce(function(c,v){
+                /* while reducing bindTexts if index is standard string then attach, else we need to run value through filters prior to attaching */
+                return c+(typeof v === 'string' ? v : (v.filterNames.length === 0 ? v._value : v.filterNames.reduce(function(v,f){
+                  if(target.filters !== undefined)
+                  {
+                    if(target.filters[f] !== undefined)
+                    {
+                      return target.filters[f](v);
+                    }
+                    else
+                    {
+                      console.warn("there is no filter by the name %o in the data model filters %o",f,Object.keys(target.filters));
+                      return v;
+                    }
+                  }
+                  console.error('Somehow filters object was not added to the mapping via .connect() method, please see dev')
+                  return v;
+                },v._value)));
+              },"");
+      }
+      
+      if(bindText.length === 1)
+      {
+        if(typeof bindText[0]._value === 'string')
+        {
+          return filter(target,bindText);
+        }
+        else
+        {
+          return bindText[0]._value;
+        }
+      }
+      else
+      {
+        return filter(target,bindText);
+      }
+    }
+    
+    
     /* refreshes the tied dom value */
     function refresh()
     {
@@ -303,26 +352,26 @@ define(['KB'],function(kb){
       
       if(this.type !== 'for')
       {
-        /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
-        this.bindTarget[this.bindProperty] = this.bindText.reduce(function(c,v){
-          /* while reducing bindTexts if index is standard string then attach, else we need to run value through filters prior to attaching */
-          return c+(typeof v === 'string' ? v : (v.filterNames.length === 0 ? v._value : v.filterNames.reduce(function(v,f){
-            if(self.filters !== undefined)
-            {
-              if(self.filters[f] !== undefined)
-              {
-                return self.filters[f](v);
-              }
-              else
-              {
-                console.warn("there is no filter by the name %o in the data model filters %o",f,Object.keys(self.filters));
-                return v;
-              }
-            }
-            console.error('Somehow filters object was not added to the mapping via .connect() method, please see dev')
-            return v;
-          },v._value)));
-        },"");
+        /* check if this is an event */
+        if(!this.isEvent)
+        {
+          if(this.type === 'component')
+          {
+            /* if this is a component binding we need to add the value to post data for being propagated to the component view model */
+            if(!this.element.k_post) this.element.k_post = {};
+            this.element.k_post[(this.bindProperty === 'textContent' ? 'innerHTML' : this.bindTarget.name)] = filterValue(this,this.bindText);
+          }
+          else
+          {
+            /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
+            this.bindTarget[this.bindProperty] = filterValue(this,this.bindText);
+          }
+        }
+        else
+        {
+          /* we assign directly as a property */
+          this.element[this.bindProperty] = this.bindText[0]._value;
+        }
       }
       return this;
     }
@@ -359,7 +408,7 @@ define(['KB'],function(kb){
           /* **FUTURE** allow standard object setting */
         }
       }
-      if(this.bindText.length === 1 && (this.type === 'text' || this.type === 'attribute')) this.element.addAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
+      if(this.bindText.length === 1 && (this.type === 'text' || this.type === 'attribute' || this.isEvent)) this.element.addAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
       return this;
     }
     
