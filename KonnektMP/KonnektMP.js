@@ -273,7 +273,8 @@ define(['KB'],function(kb){
         element:setDescriptor(element,true),
         _data:setDescriptor({},true),
         filters:setDescriptor({},true),
-        maps:setDescriptor(binds,true)
+        maps:setDescriptor(binds,true),
+        loop:setDescriptor(loop)
       });
 
       return bind
@@ -344,6 +345,14 @@ define(['KB'],function(kb){
       }
     }
     
+    function filterDataSet(dataset,bind)
+    {
+      for(var x=0,len=bind.filterNames.length;x<len;x++)
+      {
+        dataset = bind.filters[bind.filterNames[x]](dataset);
+      }
+      return dataset;
+    }
     
     /* refreshes the tied dom value */
     function refresh()
