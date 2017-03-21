@@ -207,11 +207,11 @@ define(['KB'],function(kb){
       
       function bind(b)
       {
-        var _forData = splitFor(b),
+        var _forData = (type === 'for' ? splitFor(b) : []),
             self = this;
         this.key = (type !== 'for' ? splitKey(b) : _forData[0]);
         this.filterNames = splitFilters(b);
-        this.component = (type !== 'for' ? _forData[1] : undefined);
+        this.component = (type === 'for' ? _forData[1] : undefined);
         this.id = 0;
         this.isEvent = isEvent;
 
@@ -252,6 +252,15 @@ define(['KB'],function(kb){
           if(typeof e !== 'object' || !e.value) e = {value:e};
           self.value = e.value;
         }
+        
+        /* used for updating loops */
+        this.__proto__.updateLoop = function()
+        {
+          if(self.kb_loop)
+          {
+            self.loop(self.kb_loop);
+          }
+        }
       }
 
       /* define prototypes */
@@ -267,7 +276,7 @@ define(['KB'],function(kb){
         type:setDescriptor(type),
         text:setDescriptor(text,true),
         bindText:setDescriptor(bindtext,true),
-        bindNames:setDescriptor(splitBindNames(bindtext),true),
+        bindNames:setDescriptor((type === 'for' ? [splitFor(bindtext[0])[0]] : splitBindNames(bindtext)),true),
         bindListener:setDescriptor((isEvent ? listener.toLowerCase() : listener)),
         bindProperty:setDescriptor((isEvent ? target.name.toLowerCase() : prop)),
         bindTarget:setDescriptor(target,true),
@@ -389,6 +398,7 @@ define(['KB'],function(kb){
     /* connects a data set up to the current map */
     function connect(vm)
     {
+      var self = this;
       /* sets local data passed data and sets local filters to data filters */
       this._data = vm;
       this.filters = (vm.filters !== undefined ? vm.filters : this.filters);
@@ -410,10 +420,23 @@ define(['KB'],function(kb){
           if(this.type !== 'component')
           {
             this.isConnected = true;
-            this._data.addDataUpdateListener(this.bindNames[x],this.updateDom);
+            
+            /* need to solve this better... in for loops without remove method we have memory leak */
+            this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom)
+            .addDataUpdateListener(this.bindNames[x],this.updateDom);
+            
             if(this.type === 'for')
             {
-              console.log('run for type event listeners');
+              if(this._value.addActionListener)
+              {
+                /* need to solve this better... in for loops without remove method we have memory leak */
+                this._value.removeDataUpdateListener('*',this.updateLoop)
+                .addDataUpdateListener('*',this.updateLoop)
+                .removeDataCreateListener(this.updateLoop)
+                .addDataCreateListener(this.updateLoop)
+                .removeDataDeleteListener(this.updateLoop)
+                .addDataDeleteListener(this.updateLoop)
+              }
             }
           }
         }
@@ -429,10 +452,14 @@ define(['KB'],function(kb){
     /* loop creates component nodes based on data */
     function loop(cb)
     {
+      /* this is used in cases where data changes */
+      this.kb_loop = cb;
+      
       /* clear html for the list */
       this.element.stopChange().innerHTML = "";
       
       /* apply filters to the list */
+      filterDataSet(this._value,this);
       
       /* loop through the data adding the component nodes and their post data */
       for(var x=0,len=this._value.length;x<len;x++)
@@ -440,10 +467,10 @@ define(['KB'],function(kb){
         var el = document.createElement(this.component);
         el.k_post = this._value[x];
         this.element.stopChange().appendChild(el);
+        /* fire callback after it has finished */
+        
+        if(typeof cb === 'function') cb(el);
       }
-      
-      /* fire callback after it has finished */
-      if(typeof cb === 'function') cb(this.element);
     }
     
     /* deletes the map from the maps object */
@@ -459,7 +486,13 @@ define(['KB'],function(kb){
       /* we need to remove all data listeners if they exist so they are not ran on update */
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        if(this._data.removeDataUpdateListener) this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+        if(this._data.removeDataUpdateListener)
+        {
+          this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+          this._value.removeDataUpdateListener('*',this.updateLoop)
+                .removeDataCreateListener(this.updateLoop)
+                .removeDataDeleteListener(this.updateLoop);
+        }
       }
       /* also remove element listeners */
       this.element.removeAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
