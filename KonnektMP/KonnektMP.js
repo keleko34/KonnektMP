@@ -261,6 +261,7 @@ define(['KB'],function(kb){
         refresh:setDescriptor(refresh),
         connect:setDescriptor(connect),
         deleteMap:setDescriptor(deleteMap),
+        loop:setDescriptor(loop),
         unsync:setDescriptor(unsync),
         isSynced:setDescriptor(isSynced),
         type:setDescriptor(type),
@@ -344,7 +345,6 @@ define(['KB'],function(kb){
       }
     }
     
-    
     /* refreshes the tied dom value */
     function refresh()
     {
@@ -389,7 +389,11 @@ define(['KB'],function(kb){
         if(this._data.addDataUpdateListener)
         {
           /* if data set does not exist we create it */
-          if(!this._data.exists(this.bindNames[x])) this._data.add(this.bindNames[x],(this._value));
+          if(!this._data.exists(this.bindNames[x]))
+          {
+            console.warn("No property by the name %o exists on this data set %o",this.bindNames[x],this._data);
+            this._data.add(this.bindNames[x],(this._value));
+          }
           
           /* update value with data set value, runs refresh command */
           this.value = this._data.get(this.bindNames[x]);
@@ -412,6 +416,27 @@ define(['KB'],function(kb){
       return this;
     }
     
+    /* loop creates component nodes based on data */
+    function loop(cb)
+    {
+      /* clear html for the list */
+      this.element.stopChange().innerHTML = "";
+      
+      /* apply filters to the list */
+      
+      /* loop through the data adding the component nodes and their post data */
+      for(var x=0,len=this._value.length;x<len;x++)
+      {
+        var el = document.createElement(this.component);
+        el.k_post = this._value[x];
+        this.element.stopChange().appendChild(el);
+      }
+      
+      /* fire callback after it has finished */
+      if(typeof cb === 'function') cb(this.element);
+    }
+    
+    /* deletes the map from the maps object */
     function deleteMap()
     {
       this.maps[this.key].splice(this.id,1);
