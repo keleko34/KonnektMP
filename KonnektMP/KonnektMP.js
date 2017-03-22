@@ -231,7 +231,7 @@ define(['KB'],function(kb){
         {
           if(self.isConnected && self._data)
           {
-            if(typeof e !== 'object' || !e.value) e = {value:e};
+            if(typeof e !== 'object' || e.value === undefined) e = {value:e};
             if(typeof self._data.stopChange === 'function')
             {
               self._data.stopChange()
@@ -249,7 +249,7 @@ define(['KB'],function(kb){
         {
           if(!self.isSynced()) return;
           self.element.stopChange();
-          if(typeof e !== 'object' || !e.value) e = {value:e};
+          if(typeof e !== 'object' || e.value === undefined) e = {value:e};
           self.value = e.value;
         }
         
