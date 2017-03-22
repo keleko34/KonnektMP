@@ -466,6 +466,7 @@ define(['KB'],function(kb){
       {
         var el = document.createElement(this.component);
         el.k_post = this._value[x];
+        el.kb_wrapper = this.element.kb_wrapper;
         this.element.stopChange().appendChild(el);
         /* fire callback after it has finished */
         
