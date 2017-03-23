@@ -258,6 +258,10 @@ define(['KB'],function(kb){
         {
           if(self.kb_loop)
           {
+            /*self._value.removeDataUpdateListener('*',self.updateLoop)
+                .removeDataCreateListener(self.updateLoop)
+                .removeDataDeleteListener(self.updateLoop)*/
+            
             self.loop(self.kb_loop);
           }
         }
@@ -417,27 +421,19 @@ define(['KB'],function(kb){
           
           /* update value with data set value, runs refresh command */
           this.value = this._data.get(this.bindNames[x]);
-          if(this.type !== 'component')
+          if(this.type !== 'component' && this.type !== 'for')
           {
             this.isConnected = true;
             
-            /* need to solve this better... in for loops without remove method we have memory leak */
-            this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom)
-            .addDataUpdateListener(this.bindNames[x],this.updateDom);
-            
-            if(this.type === 'for')
-            {
-              if(this._value.addActionListener)
-              {
-                /* need to solve this better... in for loops without remove method we have memory leak */
-                this._value.removeDataUpdateListener('*',this.updateLoop)
-                .addDataUpdateListener('*',this.updateLoop)
-                .removeDataCreateListener(this.updateLoop)
-                .addDataCreateListener(this.updateLoop)
-                .removeDataDeleteListener(this.updateLoop)
-                .addDataDeleteListener(this.updateLoop)
-              }
-            }
+            this._data.addDataUpdateListener(this.bindNames[x],this.updateDom);
+          }
+          
+          /* bind to array change listeners methods */
+          else if(this.type === 'for' && this._value.addDataUpdateListener)
+          {
+              this._value.addDataUpdateListener('*',this.updateLoop)
+              .addDataCreateListener(this.updateLoop)
+              .addDataDeleteListener(this.updateLoop)
           }
         }
         else
@@ -445,6 +441,8 @@ define(['KB'],function(kb){
           /* **FUTURE** allow standard object setting */
         }
       }
+      
+      
       if(this.bindText.length === 1 && (this.type === 'text' || this.type === 'attribute' || this.isEvent)) this.element.addAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
       return this;
     }
