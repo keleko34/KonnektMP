@@ -59,7 +59,7 @@ define(['KB'],function(kb){
         for(var x=0,len=childNodes.length;x<len;x++)
         {
           /* make sure we dont look at other components, but only this one */
-          if(childNodes[x].kb_maps === undefined)
+          if(childNodes[x].kb_maps === undefined && childNodes[x].nodeType !== 8)
           {
             /* add mapper refrence so from any node we can always go back to root */
             childNodes[x].kb_mapper = node;
