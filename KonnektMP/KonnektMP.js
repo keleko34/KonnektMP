@@ -16,7 +16,7 @@ define(['KB'],function(kb){
           unknown:[]
         }
     
-    function KonnektMP(node)
+    function KonnektMP(node,postpone)
     {
       /* Name of the component */
       this.name = node.tagName.toLowerCase();
@@ -35,15 +35,15 @@ define(['KB'],function(kb){
 
       /* set wrapper html and define class */
       this.wrapper.className = "Wrapper Wrapper__"+this.name;
-      this.wrapper.innerHTML = this.template;
+      if(!postpone) this.wrapper.innerHTML = this.template;
 
       /* append wrapper to fragment for prep to append to dom */
       this.fragment.appendChild(this.wrapper);
 
       /* map nodes with their bindings */
-      this.maps = this.map(this.wrapper);
+      if(!postpone) this.maps = this.map(this.wrapper);
 
-      this.wrapper.kb_maps = this.maps;
+      if(!postpone) this.wrapper.kb_maps = this.maps;
     }
     
     /* Prototypes */
