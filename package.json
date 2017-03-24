@@ -1,6 +1,6 @@
 {
   "name": "konnektmp",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "A templating and mapping library",
   "keywords": [
     "templates",
