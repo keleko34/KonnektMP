@@ -173,6 +173,8 @@ define(['KB'],function(kb){
 
       for(var i=0,lenn=attrs.length;i<lenn;i++)
       {
+        /* fix for IE, attrs.length changes and is not instanced */
+        lenn = attrs.length;
         (function(i,attr){
           /* matches an array of _start and end looking for binds in the attribute value */
           if(attr.value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
