@@ -233,7 +233,7 @@ define(['KB'],function(kb){
         });
 
         /* used to update a data set if it was connected */
-        this.__proto__.updateData = function(e)
+        this.updateData = function(e)
         {
           if(self.isConnected && self._data)
           {
@@ -251,7 +251,7 @@ define(['KB'],function(kb){
         }
 
         /* used to update the dom if the data set has events that can be connected */
-        this.__proto__.updateDom = function(e)
+        this.updateDom = function(e)
         {
           if(!self.isSynced()) return;
           self.element.stopChange();
@@ -260,7 +260,7 @@ define(['KB'],function(kb){
         }
         
         /* used for updating loops */
-        this.__proto__.updateLoop = function()
+        this.updateLoop = function()
         {
           if(self.kb_loop)
           {
