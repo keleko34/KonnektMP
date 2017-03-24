@@ -415,37 +415,39 @@ define(['KB'],function(kb){
 
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        /* as we loop throught the bind names we check if 'konnektdt' lib is being used, if so we add the appropriate listeners for the data */
-        if(this._data.addDataUpdateListener)
-        {
-          /* if data set does not exist we create it */
-          if(!this._data.exists(this.bindNames[x]))
+        (function(x,bindName){
+          /* as we loop throught the bind names we check if 'konnektdt' lib is being used, if so we add the appropriate listeners for the data */
+          if(self._data.addDataUpdateListener)
           {
-            console.warn("No property by the name %o exists on this data set %o",this.bindNames[x],this._data);
-            this._data.add(this.bindNames[x],(this._value));
+            /* if data set does not exist we create it */
+            if(!self._data.exists(bindName))
+            {
+              console.warn("No property by the name %o exists on this data set %o",bindName,self._data);
+              self._data.add(bindName,(self._value));
+            }
+
+            /* update value with data set value, runs refresh command */
+            self.value = self._data.get(bindName);
+            if(self.type !== 'component' && self.type !== 'for')
+            {
+              self.isConnected = true;
+
+              self._data.addDataUpdateListener(bindName,self.updateDom);
+            }
+
+            /* bind to array change listeners methods */
+            else if(self.type === 'for' && self._value.addDataUpdateListener)
+            {
+                self._value.addDataUpdateListener('*',self.updateLoop)
+                .addDataCreateListener(self.updateLoop)
+                .addDataDeleteListener(self.updateLoop)
+            }
           }
-          
-          /* update value with data set value, runs refresh command */
-          this.value = this._data.get(this.bindNames[x]);
-          if(this.type !== 'component' && this.type !== 'for')
+          else
           {
-            this.isConnected = true;
-            
-            this._data.addDataUpdateListener(this.bindNames[x],this.updateDom);
+            /* **FUTURE** allow standard object setting */
           }
-          
-          /* bind to array change listeners methods */
-          else if(this.type === 'for' && this._value.addDataUpdateListener)
-          {
-              this._value.addDataUpdateListener('*',this.updateLoop)
-              .addDataCreateListener(this.updateLoop)
-              .addDataDeleteListener(this.updateLoop)
-          }
-        }
-        else
-        {
-          /* **FUTURE** allow standard object setting */
-        }
+        }(x,this.bindNames[x]))
       }
       
       
@@ -456,6 +458,8 @@ define(['KB'],function(kb){
     /* loop creates component nodes based on data */
     function loop(cb)
     {
+      var self = this;
+      
       /* this is used in cases where data changes */
       this.kb_loop = cb;
       
@@ -468,13 +472,15 @@ define(['KB'],function(kb){
       /* loop through the data adding the component nodes and their post data */
       for(var x=0,len=this._value.length;x<len;x++)
       {
-        var el = document.createElement(this.component);
-        el.k_post = this._value[x];
-        el.kb_wrapper = this.element.kb_wrapper;
-        this.element.stopChange().appendChild(el);
-        /* fire callback after it has finished */
-        
-        if(typeof cb === 'function') cb(el);
+        (function(x,val){
+          var el = document.createElement(self.component);
+          el.k_post = val;
+          el.kb_wrapper = self.element.kb_wrapper;
+          self.element.stopChange().appendChild(el);
+          /* fire callback after it has finished */
+
+          if(typeof cb === 'function') cb(el);
+        }(x,this._value[x]))
       }
     }
     
@@ -488,16 +494,20 @@ define(['KB'],function(kb){
     /* acts like a deconstructor if the element happens to be unsynced */
     function unsync()
     {
+      var self = this;
+      
       /* we need to remove all data listeners if they exist so they are not ran on update */
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        if(this._data.removeDataUpdateListener)
-        {
-          this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
-          this._value.removeDataUpdateListener('*',this.updateLoop)
-                .removeDataCreateListener(this.updateLoop)
-                .removeDataDeleteListener(this.updateLoop);
-        }
+        (function(x,bindName){
+          if(self._data.removeDataUpdateListener)
+          {
+            self._data.removeDataUpdateListener(bindName,self.updateDom);
+            self._value.removeDataUpdateListener('*',self.updateLoop)
+                  .removeDataCreateListener(self.updateLoop)
+                  .removeDataDeleteListener(self.updateLoop);
+          }
+        }(x,this.bindNames[x]))
       }
       /* also remove element listeners */
       this.element.removeAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
