@@ -175,6 +175,10 @@ define(['KB'],function(kb){
       {
         /* fix for IE, attrs.length changes and is not instanced */
         lenn = attrs.length;
+        
+        /* fix for Firefox... really... */
+        if(i >= lenn) break;
+        
         (function(i,attr){
           /* matches an array of _start and end looking for binds in the attribute value */
           if(attr.value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
