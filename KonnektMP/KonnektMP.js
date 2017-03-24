@@ -147,16 +147,18 @@ define(['KB'],function(kb){
         /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
         for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
         {
-          /* if this is a bind */
-          if(binder.prototype.bindText[x].indexOf(_start) === 0)
-          {
-            /* create new bind object and attach to the binds list for returning */
-            var bind = new binder(binder.prototype.bindText[x]);
-            binder.prototype.bindText[x] = bind;
-            if(binds[bind.key] === undefined) binds[bind.key] = [];
-            bind.id = binds[bind.key].length;
-            binds[bind.key].push(bind);
-          }
+          (function(x,btext){
+            /* if this is a bind */
+            if(btext.indexOf(_start) === 0)
+            {
+              /* create new bind object and attach to the binds list for returning */
+              var bind = new binder(btext);
+              binder.prototype.bindText[x] = bind;
+              if(binds[bind.key] === undefined) binds[bind.key] = [];
+              bind.id = binds[bind.key].length;
+              binds[bind.key].push(bind);
+            }
+          }(x,binder.prototype.bindText[x]));
         }
       }
     }
@@ -171,29 +173,33 @@ define(['KB'],function(kb){
 
       for(var i=0,lenn=attrs.length;i<lenn;i++)
       {
-        /* matches an array of _start and end looking for binds in the attribute value */
-        if(attrs[i].value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
-        {
-          /*specifies bind type: component|attribute */
-          var type = (isUnknown ? 'component' : 'attribute'),
-
-              /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
-              binder = getBindObject(binds,type,attrs[i].value,splitText(attrs[i].value),(isUnknown ? '' : attrs[i].name),'value',attrs[i],node);
-
-          /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
-          for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
+        (function(i,attr){
+          /* matches an array of _start and end looking for binds in the attribute value */
+          if(attr.value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
           {
-            /* if this is a bind */
-            if(binder.prototype.bindText[x].indexOf(_start) === 0)
+            /*specifies bind type: component|attribute */
+            var type = (isUnknown ? 'component' : 'attribute'),
+
+                /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
+                binder = getBindObject(binds,type,attr.value,splitText(attr.value),(isUnknown ? '' : attr.name),'value',attr,node);
+
+            /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
+            for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
             {
-              /* create new bind object and attach to the binds list for returning */
-              var bind = new binder(binder.prototype.bindText[x]);
-              binder.prototype.bindText[x] = bind;
-              if(binds[bind.key] === undefined) binds[bind.key] = [];
-              binds[bind.key].push(bind);
+              (function(x,btext){
+                /* if this is a bind */
+                if(btext.indexOf(_start) === 0)
+                {
+                  /* create new bind object and attach to the binds list for returning */
+                  var bind = new binder(btext);
+                  binder.prototype.bindText[x] = bind;
+                  if(binds[bind.key] === undefined) binds[bind.key] = [];
+                  binds[bind.key].push(bind);
+                }
+              }(x,binder.prototype.bindText[x]));
             }
           }
-        }
+        }(i,attrs[i]))
       }
     }
     
