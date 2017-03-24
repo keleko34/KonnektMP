@@ -420,7 +420,7 @@ define(['KB'],function(kb){
               this.bindTarget[this.bindProperty] = "";
               for(var x=0,len=this._value.length;x<len;x++)
               {
-                this.element.appendChild(this._value[x]);
+                this.element.stopChange().appendChild(this._value[x]);
               }
             }
             else
