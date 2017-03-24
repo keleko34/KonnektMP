@@ -125,6 +125,16 @@ define(['KB'],function(kb){
     }
 
     /* Closure based helper methods */
+    function getMatch()
+    {
+      return new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')
+    }
+    
+    function getForMatch()
+    {
+      return new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(for)(.*?)(loop)(.*?)(\\'+_end.split('').join('\\')+')','g');
+    }
+    
 
     /* checks for bind matches in a text node and parses inserts them into the binds object for returning */
     function bindTexts(node,binds)
@@ -136,10 +146,10 @@ define(['KB'],function(kb){
           isUnknown = (node.parentElement instanceof HTMLUnknownElement);
 
       /* matches an array of _start and end looking for binds in the text */
-      if(text.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
+      if(text.match(getMatch()))
       {
         /*specifies bind type: component|for|text */
-        var type = (isUnknown ? 'component' : ((text.indexOf('for') !== -1 && text.indexOf('loop') !== undefined) ? 'for' : 'text')),
+        var type = (isUnknown ? 'component' : (text.match(getForMatch()) ? 'for' : 'text')),
 
             /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
             binder = getBindObject(binds,type,text,splitText(text),(isUnknown ? '' : 'textContent'),'textContent',node,node.parentElement);
@@ -173,11 +183,12 @@ define(['KB'],function(kb){
 
       for(var i=0,lenn=attrs.length;i<lenn;i++)
       {
-        /* fix for IE, attrs.length changes and is not instanced */
-        lenn = attrs.length;
-        
-        /* fix for Firefox... really... */
-        if(i >= lenn) break;
+        /* fix for IE and firefox, attrs.length changes and is not instanced */
+        if(lenn > attrs.length)
+        {
+          i -= (lenn-attrs.length);
+          lenn = attrs.length;
+        }
         
         (function(i,attr){
           /* matches an array of _start and end looking for binds in the attribute value */
@@ -214,7 +225,10 @@ define(['KB'],function(kb){
     /* returns a new instancer of a bindObject, that way we can keep prototypes among multiple binds */
     function getBindObject(binds,type,text,bindtext,listener,prop,target,element)
     {
-      var isEvent = ((type === 'attribute' && _domevents.indexOf(target.name) !== -1) || (type === 'component' && target.name && _domevents.indexOf(target.name) !== -1));
+      var isEvent = ((type === 'attribute' && _domevents.indexOf(target.name) !== -1) || (type === 'component' && target.name && _domevents.indexOf(target.name) !== -1)),
+          isInput = (element.tagName.toLowerCase() === 'input');
+      
+      
       if(isEvent) element.stopChange().removeAttribute(target.name);
       
       function bind(b)
@@ -226,6 +240,7 @@ define(['KB'],function(kb){
         this.component = (type === 'for' ? _forData[1] : undefined);
         this.id = 0;
         this.isEvent = isEvent;
+        this.isInput = isInput;
 
         /* updates prototype bind text to have the local object inside the array in replacement of string text */
         this.__proto__.bindText = this.__proto__.bindText.map(function(v){
@@ -400,14 +415,26 @@ define(['KB'],function(kb){
           }
           else
           {
-            /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
-            this.bindTarget[this.bindProperty] = filterValue(this,this.bindText);
+            if(this.key === 'innerHTML')
+            {
+              this.bindTarget[this.bindProperty] = "";
+              for(var x=0,len=this._value.length;x<len;x++)
+              {
+                this.element.appendChild(this._value[x]);
+              }
+            }
+            else
+            {
+              /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
+              this.bindTarget[this.bindProperty] = filterValue(this,this.bindText);
+              if(this.isInput) this.element.stopChange()[this.bindTarget.name] = filterValue(this,this.bindText);
+            }
           }
         }
         else
         {
           /* we assign directly as a property */
-          this.element[this.bindProperty] = this.bindText[0]._value;
+          this.element.stopChange()[this.bindProperty] = this.bindText[0]._value;
         }
       }
       return this;
