@@ -225,6 +225,7 @@ define(['KB'],function(kb){
         this.__proto__.bindText = this.__proto__.bindText.map(function(v){
           return (v === b ? this : v);
         });
+        this.__proto__.bindMaps.push(this);
 
         /* This handles value setting of the property, by setting this the dom is automatically updated */
         Object.defineProperties(this,{
@@ -287,6 +288,7 @@ define(['KB'],function(kb){
         text:setDescriptor(text,true),
         bindText:setDescriptor(bindtext,true),
         bindNames:setDescriptor((type === 'for' ? [splitFor(bindtext[0])[0]] : splitBindNames(bindtext)),true),
+        bindMaps:setDescriptor([],true),
         bindListener:setDescriptor((isEvent ? listener.toLowerCase() : listener)),
         bindProperty:setDescriptor((isEvent ? target.name.toLowerCase() : prop)),
         bindTarget:setDescriptor(target,true),
@@ -415,39 +417,39 @@ define(['KB'],function(kb){
 
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        (function(x,bindName){
+        (function(x,bindName,bindMap){
           /* as we loop throught the bind names we check if 'konnektdt' lib is being used, if so we add the appropriate listeners for the data */
-          if(self._data.addDataUpdateListener)
+          if(bindMap._data.addDataUpdateListener)
           {
             /* if data set does not exist we create it */
-            if(!self._data.exists(bindName))
+            if(!bindMap._data.exists(bindName))
             {
-              console.warn("No property by the name %o exists on this data set %o",bindName,self._data);
-              self._data.add(bindName,(self._value));
+              console.warn("No property by the name %o exists on this data set %o",bindName,bindMap._data);
+              bindMap._data.add(bindName,(bindMap._value));
             }
 
             /* update value with data set value, runs refresh command */
-            self.value = self._data.get(bindName);
-            if(self.type !== 'component' && self.type !== 'for')
+            bindMap.value = bindMap._data.get(bindName);
+            if(bindMap.type !== 'component' && bindMap.type !== 'for')
             {
-              self.isConnected = true;
+              bindMap.isConnected = true;
 
-              self._data.addDataUpdateListener(bindName,self.updateDom);
+              bindMap._data.addDataUpdateListener(bindName,bindMap.updateDom);
             }
 
             /* bind to array change listeners methods */
-            else if(self.type === 'for' && self._value.addDataUpdateListener)
+            else if(bindMap.type === 'for' && bindMap._value.addDataUpdateListener)
             {
-                self._value.addDataUpdateListener('*',self.updateLoop)
-                .addDataCreateListener(self.updateLoop)
-                .addDataDeleteListener(self.updateLoop)
+                bindMap._value.addDataUpdateListener('*',bindMap.updateLoop)
+                .addDataCreateListener(bindMap.updateLoop)
+                .addDataDeleteListener(bindMap.updateLoop)
             }
           }
           else
           {
             /* **FUTURE** allow standard object setting */
           }
-        }(x,this.bindNames[x]))
+        }(x,this.bindNames[x],this.bindMaps[x]))
       }
       
       
@@ -516,6 +518,7 @@ define(['KB'],function(kb){
       this.filters = null;
       this.bindNames = null;
       this.maps = null;
+      this.bindMaps = null;
       this.__proto__._data = null;
       this.__proto__.element = null;
       this.__proto__.filters = null;
@@ -524,6 +527,7 @@ define(['KB'],function(kb){
       this.__proto__.bindNames = null;
       this.__proto__.element = null;
       this.__proto__.maps = null;
+      this.__proto__.bindMaps = null;
       return false;
     }
     
