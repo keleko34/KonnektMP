@@ -405,6 +405,7 @@ define(['kb'],function(kb){
               bind.bindText[x] = bind;
               bind.bindMaps.push(bind);
               bind.id = binds[key].length;
+              bind.bindMapId = (bind.bindMaps.length-1);
               binds[key].push(bind);
             }
           }
@@ -433,7 +434,7 @@ define(['kb'],function(kb){
         this.id = 0;
       }
 
-      function mapDataPoint(obj)
+      function connect(obj)
       {
         var self = this;
 
@@ -453,7 +454,15 @@ define(['kb'],function(kb){
           }
 
           obj.getLayer(this.key)
-          .addDataUpdateListener(this.key,this.dataListener);
+          .addDataUpdateListener((this.key.split('.').pop()),this.dataListener);
+          
+          if(this.bindText.length === 1)
+          {
+            this.node.addAttrUpdateListener(this.listener,function(e){
+              self.setData(e.value);
+            });
+          }
+          this.setDom(obj.getLayer(this.key)[(this.key.split('.').pop())]);
         }
         else
         {
@@ -467,19 +476,9 @@ define(['kb'],function(kb){
 
           obj.getLayer(this.key)
           .addDataUpdateListener('*',this.dataListener)
-          .addMethodUpdateListener(this.extraListener);
+          .addDataMethodUpdateListener(this.extraListener);
         }
-      }
-
-      function mapDomPoint()
-      {
-        if(this.bindText.length === 1)
-        {
-          var self = this;
-          this.node.addAttrUpdateListener(this.listener,function(e){
-            self.setData(e.value);
-          });
-        }
+        return this;
       }
       
       function runThroughFilters(val,filters,filterFuncs)
@@ -511,7 +510,7 @@ define(['kb'],function(kb){
         }
       }
       
-      function setSession(filers,value)
+      function setSession(filters,value)
       {
         if(filters.length !== 0)
         {
@@ -532,6 +531,7 @@ define(['kb'],function(kb){
         setModel(this.filters.model,value);
         setSession(this.filters.session,value);
         setLocal(this.filters.local,value);
+        return this;
       }
 
       function setDom(value)
@@ -542,28 +542,38 @@ define(['kb'],function(kb){
         setLocal(this.filters.local,value);
         
         this.local[this.attr] = runThroughFilters(value,this.filters.filters,this._data.filters);
+        return this;
       }
-
-      function setLoop(index,event)
+      
+      function loop(cb)
+      {
+        var dataSet = this._data.getLayer(this.key);
+        for(var x=0,len=dataSet.length;x<len;x++)
+        {
+          this.setLoop(x,'create',cb);
+          
+        }
+        return this;
+      }
+      
+      function setLoop(index,event,cb)
       {
         switch(event)
         {
           case 'create':
-            addPointer(index);
-          break;
+            this.addPointer(index,cb);
           case 'delete':
-            removePointer(index);
-          break;
+            this.removePointer(index,cb);
           case 'set':
-            this.reapplyPointer(index);
-          break;
+            this.reapplyPointer(index,cb);
           case 'organize':
             for(var x=0,len=this.value.length;x<len;x++)
             {
-              this.reapplyPointer(x);
+              this.reapplyPointer(x,cb);
             }
           break;
         }
+        return this;
       }
 
       function reapplyPointer(index)
@@ -595,6 +605,7 @@ define(['kb'],function(kb){
         {
           this.node.insertBefore(newNode,this.node.children[index]);
         }
+        return newNode;
       }
 
       function removePointer(index)
@@ -619,25 +630,32 @@ define(['kb'],function(kb){
 
         this._data = null;
         delete this._data;
-
+        
+        this.bindMaps.splice(this.bindMapId,1);
+        for(var x = this.bindMapId,len=this.bindMaps.length;x < len;x++)
+        {
+          this.bindMaps[x].bindMapId = x;
+        }
+        
         this.bindMaps = null;
         delete this.bindMaps;
 
         this.binds = null;
         delete this.binds;
+        return this;
       }
 
       Object.defineProperties(bind.prototype,{
         addPointer:setDescriptor(addPointer),
         removePointer:setDescriptor(removePointer),
         reapplyPointer:setDescriptor(reapplyPointer),
-        mapDomPoint:setDescriptor(mapDomPoint),
-        mapDataPoint:setDescriptor(mapDataPoint),
+        connect:setDescriptor(connect),
         setData:setDescriptor(setData),
         setDom:setDescriptor(setDom),
         setLoop:setDescriptor(setLoop),
         bindMaps:setDescriptor([]),
-        unsync:setDescriptor(unsync)
+        unsync:setDescriptor(unsync),
+        loop:setDescriptor(loop)
       })
 
       return bind;
