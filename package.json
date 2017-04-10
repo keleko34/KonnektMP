@@ -29,7 +29,8 @@
     "url": "https://github.com/keleko34/konnektmp/issues"
   },
   "devDependencies": {
-    "K_Tasks": "^0.7.6"
+    "K_Tasks": "^0.8.1",
+    "konnektdt": "^0.7.4"
   },
   "scripts": {
     "installer": "npm run installGulp && npm run installBower && npm i && bower i",
@@ -45,6 +46,6 @@
   ],
   "directories": {},
   "dependencies": {
-    "KB": "^0.7.5"
+    "KB": "^0.7.6"
   }
 }

@@ -2,22 +2,30 @@
 <html>
   <head>
     <title>Testing</title>
+    <link rel="stylesheet" href="css/mocha.css" />
     <script type="text/javascript" src="requirejs"></script>
+    <script type="text/javascript" src="mocha"></script>
   </head>
     <body>
+      <div class="Button_list"></div>
+      <div id="mocha"><p><a href=".">Index</a></p></div>
+      <div id="messages"></div>
+      <div id="fixtures"></div>
       <test testValue="cool"></test>
       <script type="text/javascript">
-        require(['KonnektMP'],function(konnektmp){
-          var mp = konnektmp();
+        mocha.setup('bdd');
+        require(['KonnektMP','KonnektDT','chai','./test'],function(konnektmp,konnektdt,chai,test){
+          test(konnektmp(),konnektdt(),mocha,chai);
           
-          var template = "<div><input value='{{testValue}}' /><care></care><br /><div>{{test | toUpperCase,spacify}}</div><div><ul>{{for items loop item | itemcheck}}</ul></div></div>";
+          /*var template = "<div><input value='{{testValue | (yaytoVM)}}' /><care></care><br /><div>{{test | toUpperCase,spacify,[~to.model.yay]}}</div><div><ul>{{for items loop item | itemcheck}}</ul></div></div>";
           
           mp.register('test',template);
           
           var mapped = new mp(document.querySelector('test'));
-          
-          console.log(mapped);
-          mapped.node.replaceWith(mapped.wrapper);
+          mapped.wrapper.innerHTML = mapped.template;
+          mapped.node.parentElement.replaceChild(mapped.fragment,mapped.node);
+          mapped.maps = mapped.map(mapped.wrapper);
+          console.log(mapped.maps);*/
         });
       </script>
     </body>
