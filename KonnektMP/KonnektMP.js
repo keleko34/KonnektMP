@@ -458,9 +458,12 @@ define(['kb'],function(kb){
           
           if(this.bindText.length === 1)
           {
-            this.node.addAttrUpdateListener(this.listener,function(e){
+            this.domListener = function(e)
+            {
               self.setData(e.value);
-            });
+            }
+            
+            this.node.addAttrUpdateListener((this.type === 'text' ? 'html' : this.listener),this.domListener);
           }
           this.setDom(obj.getLayer(this.key)[(this.key.split('.').pop())]);
         }
@@ -477,6 +480,8 @@ define(['kb'],function(kb){
           obj.getLayer(this.key)
           .addDataUpdateListener('*',this.dataListener)
           .addDataMethodUpdateListener(this.extraListener);
+          
+          this.node[this.listener] = '';
         }
         return this;
       }
@@ -488,7 +493,22 @@ define(['kb'],function(kb){
         },val);
       }
       
-      function setModel(value,filters)
+      function concatBinds(binds)
+      {
+        return binds.reduce(function(str,v){
+          if(typeof v === 'object' && !!v._data)
+          {
+            str += runThroughFilters(v.value,v.filters.filters,v._data.filters)
+          }
+          else
+          {
+            str += v;
+          }
+          return str;
+        },"")
+      }
+      
+      function setModel(filters,value)
       {
         if(filters.length !== 0 && window.model)
         {
@@ -541,7 +561,7 @@ define(['kb'],function(kb){
         setSession(this.filters.session,value);
         setLocal(this.filters.local,value);
         
-        this.local[this.attr] = runThroughFilters(value,this.filters.filters,this._data.filters);
+        this.local[this.attr] = concatBinds(this.bindText);
         return this;
       }
       
@@ -562,10 +582,13 @@ define(['kb'],function(kb){
         {
           case 'create':
             this.addPointer(index,cb);
+          break;
           case 'delete':
             this.removePointer(index,cb);
+          break;
           case 'set':
             this.reapplyPointer(index,cb);
+          break;
           case 'organize':
             for(var x=0,len=this.value.length;x<len;x++)
             {
@@ -576,26 +599,28 @@ define(['kb'],function(kb){
         return this;
       }
 
-      function reapplyPointer(index)
+      function reapplyPointer(index,cb)
       {
         var childData = this.node.children[index].kb_viewmodel;
         for(var x=0,keys=Object.keys(this.value[index],'all'),len=keys.length;x<len;x++)
         {
           childData.addPointer(this.value,keys[x]);
         }
+        if(!!cb) cb(this.node);
       }
 
-      function addPointer(index)
+      function addPointer(index,cb)
       {
-        var newNode =  document.createElement(this.component);
-        for(var x=0,keys=Object.keys(this.value[index],'all'),len=keys.length;x<len;x++)
+        var newNode =  document.createElement(this.component),
+            data = this._data.getLayer(this.key);
+        for(var x=0,keys=Object.keys(data[index],'all'),len=keys.length;x<len;x++)
         {
           if(!newNode.k_post)
           {
             newNode.k_post = {};
             newNode.k_post.pointers = {};
           }
-          newNode.k_post.pointers[keys[x]] = this.value[index];
+          newNode.k_post.pointers[keys[x]] = data[index];
         }
         if(index >= this.node.children.length)
         {
@@ -605,13 +630,16 @@ define(['kb'],function(kb){
         {
           this.node.insertBefore(newNode,this.node.children[index]);
         }
-        return newNode;
+        if(!!cb) cb(newNode);
       }
 
-      function removePointer(index)
+      function removePointer(index,cb)
       {
         this.unsync();
         this.node.removeChild(this.node.children[index]);
+        if(!!cb) cb(this.node);
+        this.node = null;
+        delete this.node;
       }
 
       function unsync()
@@ -619,7 +647,14 @@ define(['kb'],function(kb){
         Object.defineProperty(this,'value',setDescriptor(undefined,true,true,false));
         delete this.value;
         this.__proto__.bindText = null;
-
+        
+        if(this.domListener)
+        {
+          this.node.removeAttrUpdateListener((this.type === 'text' ? 'html' : this.listener),this.domListener);
+          this.domListener = null;
+          delete this.domListener;
+        }
+        
         this._data.getLayer(this.key)
         .removeDataUpdateListener(this.dataListener);
 
@@ -631,15 +666,21 @@ define(['kb'],function(kb){
         this._data = null;
         delete this._data;
         
-        this.bindMaps.splice(this.bindMapId,1);
+        this.__proto__.bindMaps.splice(this.bindMapId,1);
         for(var x = this.bindMapId,len=this.bindMaps.length;x < len;x++)
         {
-          this.bindMaps[x].bindMapId = x;
+          this.__proto__.bindMaps[x].bindMapId = x;
         }
         
-        this.bindMaps = null;
-        delete this.bindMaps;
-
+        this.__proto__.bindMaps = null;
+        delete this.__proto__.bindMaps;
+        
+        this.node = null;
+        delete this.node;
+        
+        this.target = null;
+        delete this.target;
+        
         this.binds = null;
         delete this.binds;
         return this;
