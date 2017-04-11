@@ -178,23 +178,16 @@ define(['KB'],function(kb){
     function bindAttrs(node,binds)
     {
       /* all attributes of the node */
-      var attrs = node.attributes,
+      var attrs = Array.prototype.slice.call(node.attributes),
 
           /* if the parent element is a component then we need to treat it as a single instance map */
           isUnknown = (node instanceof HTMLUnknownElement);
 
       for(var i=0,lenn=attrs.length;i<lenn;i++)
-      {
-        /* fix for IE and firefox, attrs.length changes and is not instanced */
-        if(lenn > attrs.length)
-        {
-          i -= (lenn-attrs.length);
-          lenn = attrs.length;
-        }
-        
+      { 
         (function(i,attr){
           /* matches an array of _start and end looking for binds in the attribute value */
-          if(attr.value.match(new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(\\'+_end.split('').join('\\')+')','g')))
+          if(attr.value.match(getMatch()))
           {
             /*specifies bind type: component|attribute */
             var type = (isUnknown ? 'component' : 'attribute'),
@@ -214,6 +207,7 @@ define(['KB'],function(kb){
                   binder.prototype.bindText[x] = bind;
                   if(binds[bind.key] === undefined) binds[bind.key] = [];
                   binds[bind.key].push(bind);
+                  bind.id = (binds[bind.key].length-1);
                 }
               }(x,binder.prototype.bindText[x]));
             }
@@ -257,14 +251,14 @@ define(['KB'],function(kb){
         });
 
         /* used to update a data set if it was connected */
-        this.updateData = function(e)
+        this.updateData = (function(e)
         {
-          if(self.isConnected && self._data)
+          if(this.isConnected && this._data)
           {
             if(typeof e !== 'object' || e.value === undefined) e = {value:e};
-            if(typeof self._data.stopChange === 'function')
+            if(typeof this._data.stopChange === 'function')
             {
-              self._data.stopChange()
+              this._data.stopChange()
               .set(self.key,e.value);
             }
             else
@@ -272,29 +266,29 @@ define(['KB'],function(kb){
               /* **FUTURE** allow standard object setting */
             }
           }
-        }
+        }).bind(this);
 
         /* used to update the dom if the data set has events that can be connected */
-        this.updateDom = function(e)
+        this.updateDom = (function(e)
         {
-          if(!self.isSynced()) return;
-          self.element.stopChange();
+          if(!this.isSynced()) return;
+          this.element.stopChange();
           if(typeof e !== 'object' || e.value === undefined) e = {value:e};
-          self.value = e.value;
-        }
+          this.value = e.value;
+        }).bind(this);
         
         /* used for updating loops */
-        this.updateLoop = function(e)
+        this.updateLoop = (function(e)
         {
-          if(self.kb_loop)
+          if(this.kb_loop)
           {
             /*self._value.removeDataUpdateListener('*',self.updateLoop)
                 .removeDataCreateListener(self.updateLoop)
                 .removeDataDeleteListener(self.updateLoop)*/
             
-            self.loop(e,self.kb_loop);
+            this.loop(e,this.kb_loop);
           }
-        }
+        }).bind(this);
       }
 
       /* define prototypes */
@@ -306,6 +300,7 @@ define(['KB'],function(kb){
         deleteMap:setDescriptor(deleteMap),
         loop:setDescriptor(loop),
         unsync:setDescriptor(unsync),
+        unconnect:setDescriptor(unconnect),
         isSynced:setDescriptor(isSynced),
         type:setDescriptor(type),
         text:setDescriptor(text,true),
@@ -474,6 +469,9 @@ define(['KB'],function(kb){
             /* bind to array change listeners methods */
             else if(bindMap.type === 'for' && bindMap._value.addDataUpdateListener)
             {
+                /* clear html for the list */
+                bindMap.element.stopChange().innerHTML = "";
+              
                 bindMap._value.addDataMethodUpdateListener(bindMap.updateLoop)
                 .addDataDeleteListener(bindMap.updateLoop);
             }
@@ -490,35 +488,63 @@ define(['KB'],function(kb){
       return this;
     }
     
+    /* loops through all maps and reconnects them to another data source */
+    function loopConnect(maps,data)
+    {
+      for(var x=0,keys=Object.keys(maps),len=keys.length;x<len;x++)
+      {
+        for(var i=0,lenn=maps[keys[x]].length;i<lenn;i++)
+        {
+          maps[keys[x]][i].unconnect().connect(data);
+        }
+      }
+    }
+    
     /* loop creates component nodes based on data */
     function loop(e,cb)
     {
       var self = this;
       
       /* this is used in cases where data changes */
-      this.kb_loop = cb;
+      if(typeof e === 'function') this.kb_loop = e;
       
       /* apply filters to the list */
       filterDataSet(this._value,this);
       
+      /* This is an initial loop for initially creating the items */
+      if(typeof e === 'function')
+      {
+        /* loop through the data adding the component nodes and their post data */
+        for(var x=0,len=this._value.length;x<len;x++)
+        {
+          var el = document.createElement(this.component);
+              el.k_post = this._value[x];
+              el.k_post.k_id = x;
+              el.kb_wrapper = this.element.kb_wrapper;
+              this.element.stopChange().appendChild(el);
+              /* fire callback after it has finished */
+              e(el);
+        }
+      }
+      
       /* we have a new item that needs added */
-      if(e.type === 'postset' && typeof e.oldValue === undefined)
+      else if(e.type === 'postset' && typeof e.oldValue === 'undefined')
       {
         var el = document.createElement(self.component),
-            length = self.element.children.length;
+            length = this.element.children.length;
         el.k_post = this._value[e.key];
-        el.kb_wrapper = self.element.kb_wrapper;
+        el.kb_wrapper = this.element.kb_wrapper;
         
         /* if its the last item then just append */
         if(parseInt(e.key) >= length)
         {
-          self.element.stopChange().appendChild(el);
+          this.element.stopChange().appendChild(el);
         }
         
         /* if not then insert into desired location */
         else
         {
-          self.element.stopChange().insertBefore(el,self.element.children[e.key]);
+          this.element.stopChange().insertBefore(el,this.element.children[e.key]);
         }
         if(typeof cb === 'function') cb(el);
       }
@@ -526,17 +552,35 @@ define(['KB'],function(kb){
       /* we have an item that needs deleted */
       else if(e.event === 'delete')
       {
-         self.element.stopChange().removeChild(self.element.children[e.key]);
+         this.element.stopChange().removeChild(this.element.children[e.key]);
       }
       
       /* its a standard reorganization update */
-      else
+      else if(e.type !== 'postpush')
       {
-        for(var x=0,keys=Object.keys(this._value[e.key]),len=keys.length;x<len;x++)
+        this.element.stopChange().innerHTML = "";
+        /* loop through the data adding the component nodes and their post data */
+        for(var x=0,len=this._value.length;x<len;x++)
         {
-          self.element.children[e.key].kb_viewmodel.addPointer(this._value[e.key],keys[x]);
-          self.element.children[e.key].kb_maps.connect(this._value[e.key]);
+          var el = document.createElement(this.component);
+              el.k_post = this._value[x];
+              el.k_post.k_id = x;
+              el.kb_wrapper = this.element.kb_wrapper;
+              this.element.stopChange().appendChild(el);
+              /* fire callback after it has finished */
+              if(cb) cb(el);
         }
+        
+        /*for(var x=0,len=this.element.children.length;x<len;x++)
+        {*/
+          //loopConnect(this.element.children[x].kb_maps,this.element.children[this.element.children[x].kb_viewmodel.k_id].kb_viewmodel);
+          
+          /*for(var i=0,keys=Object.keys(this._value[x]),lenn=keys.length;i<lenn;i++)
+          {
+            this.element.children[x].kb_viewmodel.addPointer(this._value[x],keys[i]);
+            loopConnect(this.element.children[x].kb_maps,this.element.children[x].kb_viewmodel);
+          }*/
+        //}
       }
     }
     
@@ -544,6 +588,15 @@ define(['KB'],function(kb){
     function deleteMap()
     {
       this.maps[this.key].splice(this.id,1);
+      return this;
+    }
+    
+    function unconnect(id)
+    {
+      for(var x=0,len=this.bindNames.length;x<len;x++)
+      {
+        this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+      }
       return this;
     }
     
@@ -555,18 +608,29 @@ define(['KB'],function(kb){
       /* we need to remove all data listeners if they exist so they are not ran on update */
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        (function(x,bindName){
-          if(self._data.removeDataUpdateListener)
+        if(this._data.removeDataUpdateListener)
+        {
+          if(this.type === 'for')
           {
-            self._data.removeDataUpdateListener(bindName,self.updateDom);
-            self._value.removeDataMethodUpdateListener('*',self.updateLoop)
-                       .removeDataDeleteListener(self.updateLoop);
+            this._value.removeDataMethodUpdateListener('*',this.updateLoop)
+            .removeDataDeleteListener(self.updateLoop);
           }
-        }(x,this.bindNames[x]))
+          else if(this.type !== 'component')
+          {
+            this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+          }
+        }
       }
       /* also remove element listeners */
       this.element.removeAttrUpdateListener((this.type === 'text' ? 'html' : this.bindListener),this.updateData);
       /* clear all tied shared objects so GC can pick up this object for destroying */
+      
+      this.maps[this.key].splice(this.id,1);
+      for(var x=0,len=this.maps[this.key].length;x<len;x++)
+      {
+        this.maps[this.key][x].id = x;
+      }
+      
       this._data = null;
       this.filters = null;
       this.bindNames = null;
@@ -581,7 +645,7 @@ define(['KB'],function(kb){
       this.__proto__.element = null;
       this.__proto__.maps = null;
       this.__proto__.bindMaps = null;
-      return false;
+      return this;
     }
     
     /* Text Splitters */
@@ -812,7 +876,7 @@ define(['KB'],function(kb){
     }
 
     /* searched start characters for looking for binds */
-    function startChars(v)
+    function start(v)
     {
       if(v === undefined) return _start;
       _start = (typeof v === 'string' ? v : _start);
@@ -820,7 +884,7 @@ define(['KB'],function(kb){
     }
 
     /* searched end characters for looking for binds */
-    function endChars(v)
+    function end(v)
     {
       if(v === undefined) return _end;
       _end = (typeof v === 'string' ? v : _end);
@@ -828,7 +892,7 @@ define(['KB'],function(kb){
     }
 
     /* searched pipe characters for looking for bind settings inside the bind */
-    function pipeChars(v)
+    function pipe(v)
     {
       if(v === undefined) return _pipe;
       _pipe = (typeof v === 'string' ? v : _pipe);
@@ -837,9 +901,9 @@ define(['KB'],function(kb){
 
     /* Assign as non changeable properties to main method for exporting */
     Object.defineProperties(KonnektMP,{
-      startChars:setDescriptor(startChars),
-      endChars:setDescriptor(endChars),
-      pipeChars:setDescriptor(pipeChars),
+      start:setDescriptor(start),
+      end:setDescriptor(end),
+      pipe:setDescriptor(pipe),
       getUnknown:setDescriptor(getUnknown),
       isRegistered:setDescriptor(isRegistered),
       register:setDescriptor(register),
