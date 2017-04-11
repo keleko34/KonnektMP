@@ -274,7 +274,7 @@ define(['KB'],function(kb){
           if(!this.isSynced()) return;
           this.element.stopChange();
           if(typeof e !== 'object' || e.value === undefined) e = {value:e};
-          this.value = e.value;
+          this.value = this._data[e.key];
         }).bind(this);
         
         /* used for updating loops */
@@ -441,7 +441,7 @@ define(['KB'],function(kb){
     {
       var self = this;
       /* sets local data passed data and sets local filters to data filters */
-      this._data = vm;
+      this.__proto__._data = vm;
       this.filters = (vm.filters !== undefined ? vm.filters : this.filters);
 
       for(var x=0,len=this.bindNames.length;x<len;x++)
@@ -495,7 +495,7 @@ define(['KB'],function(kb){
       {
         for(var i=0,lenn=maps[keys[x]].length;i<lenn;i++)
         {
-          maps[keys[x]][i].unconnect().connect(data);
+          maps[keys[x]][i].updateDom(maps[keys[x]][i]);
         }
       }
     }
@@ -558,8 +558,7 @@ define(['KB'],function(kb){
       /* its a standard reorganization update */
       else if(e.type !== 'postpush')
       {
-        this.element.stopChange().innerHTML = "";
-        /* loop through the data adding the component nodes and their post data */
+        /*this.element.stopChange().innerHTML = "";
         for(var x=0,len=this._value.length;x<len;x++)
         {
           var el = document.createElement(this.component);
@@ -567,20 +566,20 @@ define(['KB'],function(kb){
               el.k_post.k_id = x;
               el.kb_wrapper = this.element.kb_wrapper;
               this.element.stopChange().appendChild(el);
-              /* fire callback after it has finished */
               if(cb) cb(el);
-        }
+        }*/
         
-        /*for(var x=0,len=this.element.children.length;x<len;x++)
-        {*/
+        for(var x=0,len=this.element.children.length;x<len;x++)
+        {
           //loopConnect(this.element.children[x].kb_maps,this.element.children[this.element.children[x].kb_viewmodel.k_id].kb_viewmodel);
           
-          /*for(var i=0,keys=Object.keys(this._value[x]),lenn=keys.length;i<lenn;i++)
+          for(var i=0,keys=Object.keys(this._value[x]),lenn=keys.length;i<lenn;i++)
           {
             this.element.children[x].kb_viewmodel.addPointer(this._value[x],keys[i]);
-            loopConnect(this.element.children[x].kb_maps,this.element.children[x].kb_viewmodel);
-          }*/
-        //}
+            this.element.children[x].kb_viewmodel.stopChange()[keys[i]] = this._value[x][keys[i]];
+            //loopConnect(this.element.children[x].kb_maps);
+          }
+        }
       }
     }
     
@@ -631,7 +630,6 @@ define(['KB'],function(kb){
         this.maps[this.key][x].id = x;
       }
       
-      this._data = null;
       this.filters = null;
       this.bindNames = null;
       this.maps = null;
