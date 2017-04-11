@@ -56,6 +56,8 @@ define(['KB'],function(kb){
       /* This method is a recursive childnode search, searches for text nodes and attributes for getting binds */
       function loopMap(childNodes)
       {
+        childNodes = Array.prototype.slice.call(childNodes);
+        
         for(var x=0,len=childNodes.length;x<len;x++)
         {
           /* make sure we dont look at other components, but only this one */
@@ -86,7 +88,7 @@ define(['KB'],function(kb){
     }
 
     /* allows appending a new filter to a bind with a requested key */
-    KonnektMP.prototype.addFilter = function(name,filterName)
+    /*KonnektMP.prototype.addFilter = function(name,filterName)
     {
       if(this.maps[name] !== undefined)
       {
@@ -96,10 +98,10 @@ define(['KB'],function(kb){
         });
       }
       return this;
-    }
+    }*/
 
     /* removes a filter name from a desired bind with requested key */
-    KonnektMP.prototype.removeFilter = function(name,filterName)
+    /*KonnektMP.prototype.removeFilter = function(name,filterName)
     {
       if(this.maps[name] !== undefined)
       {
@@ -109,10 +111,10 @@ define(['KB'],function(kb){
         });
       }
       return this;
-    }
+    }*/
 
     /* allows for swapping one filter out for another on a bind */
-    KonnektMP.prototype.swapFilter = function(name,oldFilter,newFilter)
+    /*KonnektMP.prototype.swapFilter = function(name,oldFilter,newFilter)
     {
       if(this.maps[name] !== undefined)
       {
@@ -122,7 +124,7 @@ define(['KB'],function(kb){
         })
       }
       return this;
-    }
+    }*/
 
     /* Closure based helper methods */
     function getMatch()
@@ -282,7 +284,7 @@ define(['KB'],function(kb){
         }
         
         /* used for updating loops */
-        this.updateLoop = function()
+        this.updateLoop = function(e)
         {
           if(self.kb_loop)
           {
@@ -290,7 +292,7 @@ define(['KB'],function(kb){
                 .removeDataCreateListener(self.updateLoop)
                 .removeDataDeleteListener(self.updateLoop)*/
             
-            self.loop(self.kb_loop);
+            self.loop(e,self.kb_loop);
           }
         }
       }
@@ -316,8 +318,7 @@ define(['KB'],function(kb){
         element:setDescriptor(element,true),
         _data:setDescriptor({},true),
         filters:setDescriptor({},true),
-        maps:setDescriptor(binds,true),
-        loop:setDescriptor(loop)
+        maps:setDescriptor(binds,true)
       });
 
       return bind
@@ -473,9 +474,8 @@ define(['KB'],function(kb){
             /* bind to array change listeners methods */
             else if(bindMap.type === 'for' && bindMap._value.addDataUpdateListener)
             {
-                bindMap._value.addDataUpdateListener('*',bindMap.updateLoop)
-                .addDataCreateListener(bindMap.updateLoop)
-                .addDataDeleteListener(bindMap.updateLoop)
+                bindMap._value.addDataMethodUpdateListener(bindMap.updateLoop)
+                .addDataDeleteListener(bindMap.updateLoop);
             }
           }
           else
@@ -491,31 +491,52 @@ define(['KB'],function(kb){
     }
     
     /* loop creates component nodes based on data */
-    function loop(cb)
+    function loop(e,cb)
     {
       var self = this;
       
       /* this is used in cases where data changes */
       this.kb_loop = cb;
       
-      /* clear html for the list */
-      this.element.stopChange().innerHTML = "";
-      
       /* apply filters to the list */
       filterDataSet(this._value,this);
       
-      /* loop through the data adding the component nodes and their post data */
-      for(var x=0,len=this._value.length;x<len;x++)
+      /* we have a new item that needs added */
+      if(e.type === 'postset' && typeof e.oldValue === undefined)
       {
-        (function(x,val){
-          var el = document.createElement(self.component);
-          el.k_post = val;
-          el.kb_wrapper = self.element.kb_wrapper;
+        var el = document.createElement(self.component),
+            length = self.element.children.length;
+        el.k_post = this._value[e.key];
+        el.kb_wrapper = self.element.kb_wrapper;
+        
+        /* if its the last item then just append */
+        if(parseInt(e.key) >= length)
+        {
           self.element.stopChange().appendChild(el);
-          /* fire callback after it has finished */
-
-          if(typeof cb === 'function') cb(el);
-        }(x,this._value[x]))
+        }
+        
+        /* if not then insert into desired location */
+        else
+        {
+          self.element.stopChange().insertBefore(el,self.element.children[e.key]);
+        }
+        if(typeof cb === 'function') cb(el);
+      }
+      
+      /* we have an item that needs deleted */
+      else if(e.event === 'delete')
+      {
+         self.element.stopChange().removeChild(self.element.children[e.key]);
+      }
+      
+      /* its a standard reorganization update */
+      else
+      {
+        for(var x=0,keys=Object.keys(this._value[e.key]),len=keys.length;x<len;x++)
+        {
+          self.element.children[e.key].kb_viewmodel.addPointer(this._value[e.key],keys[x]);
+          self.element.children[e.key].kb_maps.connect(this._value[e.key]);
+        }
       }
     }
     
@@ -538,9 +559,8 @@ define(['KB'],function(kb){
           if(self._data.removeDataUpdateListener)
           {
             self._data.removeDataUpdateListener(bindName,self.updateDom);
-            self._value.removeDataUpdateListener('*',self.updateLoop)
-                  .removeDataCreateListener(self.updateLoop)
-                  .removeDataDeleteListener(self.updateLoop);
+            self._value.removeDataMethodUpdateListener('*',self.updateLoop)
+                       .removeDataDeleteListener(self.updateLoop);
           }
         }(x,this.bindNames[x]))
       }
