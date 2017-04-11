@@ -380,9 +380,9 @@ define(['kb'],function(kb){
           binder.prototype.isEvent = (_domevents.indexOf(attrs[i].name) !== -1);
           binder.prototype.isInput = (node.tagName.toLowerCase() === 'input');
           binder.prototype.listener = attrs[i].name;
-          binder.prototype.attr = attrs[i].name;
-          binder.prototype.local = node;
-          binder.prototype.node = node.parentElement;
+          binder.prototype.attr = 'value';
+          binder.prototype.local = (isUnknown ? node : attrs[i]);
+          binder.prototype.node = (isUnknown ? node.parentElement : node);
           binder.prototype.binds = binds;
 
           if(binder.prototype.isEvent)
@@ -434,12 +434,12 @@ define(['kb'],function(kb){
         this.id = 0;
       }
 
-      function connect(obj)
+      function connect(obj,onCreate)
       {
         var self = this;
 
         this._data = obj;
-        Object.defineProperty(this,'value',setPointer(obj,this.key),true,true);
+        Object.defineProperty(this,'value',setPointer(obj,this.key,true,true));
         if(this.type !== 'for')
         {
           this.dataListener = function(e){
@@ -455,7 +455,7 @@ define(['kb'],function(kb){
 
           obj.getLayer(this.key)
           .addDataUpdateListener((this.key.split('.').pop()),this.dataListener);
-          
+          if(this.isEvent) this.node.removeAttribute(this.attr);
           if(this.bindText.length === 1)
           {
             this.domListener = function(e)
@@ -465,21 +465,27 @@ define(['kb'],function(kb){
             
             this.node.addAttrUpdateListener((this.type === 'text' ? 'html' : this.listener),this.domListener);
           }
-          this.setDom(obj.getLayer(this.key)[(this.key.split('.').pop())]);
+          this.setDom((this.key === 'innerHTML' ? obj.getLayer(this.key) : obj.getLayer(this.key)[(this.key.split('.').pop())]));
         }
         else
         {
           this.dataListener = function(e){
-            self.setLoop(e.key,e.event);
-          }
-
-          this.extraListener = function(e){
-            self.setLoop('*','organize');
+            if(e.type === 'postset')
+            {
+              self.setLoop(e.key,'create',function(node){
+                if(onCreate) onCreate.call(this,node,function(){
+                  self.setLoop('*','organize');
+                });
+              });
+            }
+            else if(e.type !== 'postpush')
+            {
+              self.setLoop('*','organize');
+            }
           }
 
           obj.getLayer(this.key)
-          .addDataUpdateListener('*',this.dataListener)
-          .addDataMethodUpdateListener(this.extraListener);
+          .addDataMethodUpdateListener(this.dataListener);
           
           this.node[this.listener] = '';
         }
@@ -546,7 +552,7 @@ define(['kb'],function(kb){
         /* run through vmFilters + post set storage and model filters */
         value = runThroughFilters(value,this.filters.vmFilters,this._data.filters);
         
-        this._data.set(this.key,value);
+        this._data.stopChange().set(this.key,value);
         
         setModel(this.filters.model,value);
         setSession(this.filters.session,value);
@@ -561,7 +567,26 @@ define(['kb'],function(kb){
         setSession(this.filters.session,value);
         setLocal(this.filters.local,value);
         
-        this.local[this.attr] = concatBinds(this.bindText);
+        if(this.isEvent)
+        {
+          this.node.stopChange()[this.listener] = value;
+        }
+        else if(this.isInput && this.attr === 'value')
+        {
+          this.node.stopChange()[this.listener] = concatBinds(this.bindText);
+        }
+        else if(this.type === 'text' && this.key === 'innerHTML')
+        {
+          for(var x=0,len=value.length;x<len;x++)
+          {
+            this.node.appendChild(value[x]);
+          }
+        }
+        else
+        {
+          if(this.local.stopChange) this.local.stopChange();
+          this.local[this.attr] = concatBinds(this.bindText);
+        }
         return this;
       }
       
@@ -604,7 +629,7 @@ define(['kb'],function(kb){
         var childData = this.node.children[index].kb_viewmodel;
         for(var x=0,keys=Object.keys(this.value[index],'all'),len=keys.length;x<len;x++)
         {
-          childData.addPointer(this.value,keys[x]);
+          childData.addPointer(this.value[index],keys[x]);
         }
         if(!!cb) cb(this.node);
       }
@@ -656,12 +681,7 @@ define(['kb'],function(kb){
         }
         
         this._data.getLayer(this.key)
-        .removeDataUpdateListener(this.dataListener);
-
-        if(this.extraListener)
-        {
-          this._data.getLayer(this.key).removeMethodUpdateListener(this.extraListener);
-        }
+        .removeDataMethodUpdateListener(this.dataListener);
 
         this._data = null;
         delete this._data;
