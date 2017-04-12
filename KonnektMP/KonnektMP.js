@@ -232,6 +232,7 @@ define(['KB'],function(kb){
         var _forData = (type === 'for' ? splitFor(b) : []),
             self = this;
         this.key = (type !== 'for' ? splitKey(b) : _forData[0]);
+        this.localKey = this.key.split('.').pop();
         this.filterNames = splitFilters(b);
         this.component = (type === 'for' ? _forData[1] : undefined);
         this.id = 0;
@@ -246,55 +247,43 @@ define(['KB'],function(kb){
 
         /* This handles value setting of the property, by setting this the dom is automatically updated */
         Object.defineProperties(this,{
-          value:setBindDescriptor(this.valget,this.valset,true),
-          _value:setDescriptor("",true)
+          value:setBindDescriptor(bindGet,bindSet,true,true)
         });
 
         /* used to update a data set if it was connected */
-        this.updateData = (function(e)
+        this.updateData = function(e)
         {
-          if(this.isConnected && this._data)
+          if(self.isConnected && self._data)
           {
             if(typeof e !== 'object' || e.value === undefined) e = {value:e};
-            if(typeof this._data.stopChange === 'function')
+            if(typeof self._data.stopChange === 'function')
             {
-              this._data.stopChange()
-              .set(self.key,e.value);
+              self._data.set(self.key,e.value);
             }
             else
             {
               /* **FUTURE** allow standard object setting */
             }
           }
-        }).bind(this);
+        };
 
         /* used to update the dom if the data set has events that can be connected */
-        this.updateDom = (function(e)
-        {
-          if(!this.isSynced()) return;
-          this.element.stopChange();
-          if(typeof e !== 'object' || e.value === undefined) e = {value:e};
-          this.value = this._data[e.key];
-        }).bind(this);
+        this.updateDom = function(e){
+          self.refresh();
+        };
         
         /* used for updating loops */
-        this.updateLoop = (function(e)
+        this.updateLoop = function(e)
         {
-          if(this.kb_loop)
+          if(self.kb_loop)
           {
-            /*self._value.removeDataUpdateListener('*',self.updateLoop)
-                .removeDataCreateListener(self.updateLoop)
-                .removeDataDeleteListener(self.updateLoop)*/
-            
-            this.loop(e,this.kb_loop);
+            self.loop(e,self.kb_loop);
           }
-        }).bind(this);
+        };
       }
 
       /* define prototypes */
       Object.defineProperties(bind.prototype,{
-        valget:setDescriptor(bindGet),
-        valset:setDescriptor(bindSet),
         refresh:setDescriptor(refresh),
         connect:setDescriptor(connect),
         deleteMap:setDescriptor(deleteMap),
@@ -324,14 +313,13 @@ define(['KB'],function(kb){
     /* used for value to get current value */
     function bindGet()
     {
-      return this._value;
+      return (this._data.get ? this._data.get(this.key) : '');
     }
     
     /* used for value to set and refresh current value */
     function bindSet(v)
     {
-      this._value = (this.isSynced() ? v : this._value);
-      this.refresh();
+      if(this._data.set) this._data.set(this.key,v);
     }
     
     /* checks if the bind element has been removed from the dom */
@@ -348,7 +336,7 @@ define(['KB'],function(kb){
       {
         return bindText.reduce(function(c,v){
                 /* while reducing bindTexts if index is standard string then attach, else we need to run value through filters prior to attaching */
-                return c+(typeof v === 'string' ? v : (v.filterNames.length === 0 ? v._value : v.filterNames.reduce(function(v,f){
+                return c+(typeof v === 'string' ? v : (v.filterNames.length === 0 ? v.value : v.filterNames.reduce(function(v,f){
                   if(target.filters !== undefined)
                   {
                     if(target.filters[f] !== undefined)
@@ -363,19 +351,19 @@ define(['KB'],function(kb){
                   }
                   console.error('Somehow filters object was not added to the mapping via .connect() method, please see dev')
                   return v;
-                },v._value)));
+                },v.value)));
               },"");
       }
       
       if(bindText.length === 1)
       {
-        if(typeof bindText[0]._value === 'string')
+        if(typeof bindText[0].value === 'string')
         {
           return filter(target,bindText);
         }
         else
         {
-          return bindText[0]._value;
+          return bindText[0].value;
         }
       }
       else
@@ -414,9 +402,9 @@ define(['KB'],function(kb){
             if(this.key === 'innerHTML')
             {
               this.bindTarget[this.bindProperty] = "";
-              for(var x=0,len=this._value.length;x<len;x++)
+              for(var x=0,len=this.value.length;x<len;x++)
               {
-                this.element.stopChange().appendChild(this._value[x]);
+                this.element.stopChange().appendChild(this.value[x]);
               }
             }
             else
@@ -430,7 +418,7 @@ define(['KB'],function(kb){
         else
         {
           /* we assign directly as a property */
-          this.element.stopChange()[this.bindProperty] = this.bindText[0]._value;
+          this.element.stopChange()[this.bindProperty] = this.bindText[0].value;
         }
       }
       return this;
@@ -442,7 +430,7 @@ define(['KB'],function(kb){
       var self = this;
       /* sets local data passed data and sets local filters to data filters */
       this.__proto__._data = vm;
-      this.filters = (vm.filters !== undefined ? vm.filters : this.filters);
+      this.__proto__.filters = (vm.filters !== undefined ? vm.filters : this.filters);
 
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
@@ -454,25 +442,25 @@ define(['KB'],function(kb){
             if(!bindMap._data.exists(bindName))
             {
               console.warn("No property by the name %o exists on this data set %o",bindName,bindMap._data);
-              bindMap._data.add(bindName,(bindMap._value));
+              bindMap._data.add(bindName,(bindMap.value));
             }
 
             /* update value with data set value, runs refresh command */
-            bindMap.value = bindMap._data.get(bindName);
+            bindMap.refresh();
             if(bindMap.type !== 'component' && bindMap.type !== 'for')
             {
               bindMap.isConnected = true;
 
-              bindMap._data.addDataUpdateListener(bindName,bindMap.updateDom);
+              bindMap._data.getLayer(bindMap.key).addDataUpdateListener(bindName,bindMap.updateDom);
             }
 
             /* bind to array change listeners methods */
-            else if(bindMap.type === 'for' && bindMap._value.addDataUpdateListener)
+            else if(bindMap.type === 'for' && bindMap._data.addDataUpdateListener)
             {
                 /* clear html for the list */
                 bindMap.element.stopChange().innerHTML = "";
               
-                bindMap._value.addDataMethodUpdateListener(bindMap.updateLoop)
+                bindMap._data.getLayer(bindMap.key).addDataMethodUpdateListener(bindMap.updateLoop)
                 .addDataDeleteListener(bindMap.updateLoop);
             }
           }
@@ -495,7 +483,8 @@ define(['KB'],function(kb){
       {
         for(var i=0,lenn=maps[keys[x]].length;i<lenn;i++)
         {
-          maps[keys[x]][i].updateDom(maps[keys[x]][i]);
+          //maps[keys[x]][i].__proto__._data = data;
+          maps[keys[x]][i].refresh();
         }
       }
     }
@@ -509,16 +498,16 @@ define(['KB'],function(kb){
       if(typeof e === 'function') this.kb_loop = e;
       
       /* apply filters to the list */
-      filterDataSet(this._value,this);
+      filterDataSet(this._data.get(this.key),this);
       
       /* This is an initial loop for initially creating the items */
       if(typeof e === 'function')
       {
         /* loop through the data adding the component nodes and their post data */
-        for(var x=0,len=this._value.length;x<len;x++)
+        for(var x=0,len=this._data.get(this.key).length;x<len;x++)
         {
           var el = document.createElement(this.component);
-              el.k_post = this._value[x];
+              el.k_post = this._data.get(this.key)[x];
               el.k_post.k_id = x;
               el.kb_wrapper = this.element.kb_wrapper;
               this.element.stopChange().appendChild(el);
@@ -528,11 +517,11 @@ define(['KB'],function(kb){
       }
       
       /* we have a new item that needs added */
-      else if(e.type === 'postset' && typeof e.oldValue === 'undefined')
+      else if(e.type === 'postset' && (typeof e.oldValue === 'undefined' || (typeof e.oldValue === 'string' && e.oldValue.length === 0)))
       {
         var el = document.createElement(self.component),
             length = this.element.children.length;
-        el.k_post = this._value[e.key];
+        el.k_post = this._data.get(this.key)[e.key];
         el.kb_wrapper = this.element.kb_wrapper;
         
         /* if its the last item then just append */
@@ -569,16 +558,29 @@ define(['KB'],function(kb){
               if(cb) cb(el);
         }*/
         
-        for(var x=0,len=this.element.children.length;x<len;x++)
+        for(var x=0,len=this._data.get(this.key).length;x<len;x++)
         {
+          var _curr = this.element.children[x];
           //loopConnect(this.element.children[x].kb_maps,this.element.children[this.element.children[x].kb_viewmodel.k_id].kb_viewmodel);
-          
-          for(var i=0,keys=Object.keys(this._value[x]),lenn=keys.length;i<lenn;i++)
+          for(var i=0,keys=Object.keys(_curr.kb_viewmodel.pointers),lenn=keys.length;i<lenn;i++)
           {
-            this.element.children[x].kb_viewmodel.addPointer(this._value[x],keys[i]);
-            this.element.children[x].kb_viewmodel.stopChange()[keys[i]] = this._value[x][keys[i]];
-            //loopConnect(this.element.children[x].kb_maps);
+            /* flush events */
+            _curr.kb_viewmodel.pointers[keys[i]].key = x;
+            /*(function(obj,x,key){
+              Object.defineProperty(obj.element.children[x].kb_viewmodel,key,{
+                get:function(){return obj._data.get(obj.key)[x][key]},
+                set:function(v){
+                  (this._stopChange ? obj._data.get(obj.key)[x].stopChange() : obj._data.get(obj.key)[x])[key] = v;
+                  this._stopChange = undefined;
+                }
+              });
+            }(this,x,keys[i]));*/
+            
+            //this.element.children[x].kb_viewmodel.del(keys[i]);
+            //this.element.children[x].kb_viewmodel.stopChange().addPointer(this._data.get(this.key)[x],keys[i]);
+            //this.element.children[x].kb_viewmodel.stopChange()[keys[i]] = this._value[x][keys[i]];
           }
+          loopConnect(this.element.children[x].kb_maps);
         }
       }
     }
@@ -594,7 +596,7 @@ define(['KB'],function(kb){
     {
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+        this._data.getLayer(this.key).removeDataUpdateListener(this.bindNames[x],this.updateDom);
       }
       return this;
     }
@@ -611,12 +613,12 @@ define(['KB'],function(kb){
         {
           if(this.type === 'for')
           {
-            this._value.removeDataMethodUpdateListener('*',this.updateLoop)
+            this._data.getLayer(this.key).removeDataMethodUpdateListener('*',this.updateLoop)
             .removeDataDeleteListener(self.updateLoop);
           }
           else if(this.type !== 'component')
           {
-            this._data.removeDataUpdateListener(this.bindNames[x],this.updateDom);
+            this._data.getLayer(this.key).removeDataUpdateListener(this.bindNames[x],this.updateDom);
           }
         }
       }
@@ -630,7 +632,6 @@ define(['KB'],function(kb){
         this.maps[this.key][x].id = x;
       }
       
-      this.filters = null;
       this.bindNames = null;
       this.maps = null;
       this.bindMaps = null;
