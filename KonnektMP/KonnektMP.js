@@ -159,18 +159,17 @@ define(['KB'],function(kb){
         /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
         for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
         {
-          (function(x,btext){
-            /* if this is a bind */
-            if(btext.indexOf(_start) === 0)
-            {
-              /* create new bind object and attach to the binds list for returning */
-              var bind = new binder(btext);
-              binder.prototype.bindText[x] = bind;
-              if(binds[bind.key] === undefined) binds[bind.key] = [];
-              bind.id = binds[bind.key].length;
-              binds[bind.key].push(bind);
-            }
-          }(x,binder.prototype.bindText[x]));
+          var btext = binder.prototype.bindText[x];
+          /* if this is a bind */
+          if(btext.indexOf(_start) === 0)
+          {
+            /* create new bind object and attach to the binds list for returning */
+            var bind = new binder(btext);
+            binder.prototype.bindText[x] = bind;
+            if(binds[bind.key] === undefined) binds[bind.key] = [];
+            bind.id = binds[bind.key].length;
+            binds[bind.key].push(bind);
+          }
         }
       }
     }
@@ -181,38 +180,37 @@ define(['KB'],function(kb){
       var attrs = Array.prototype.slice.call(node.attributes),
 
           /* if the parent element is a component then we need to treat it as a single instance map */
-          isUnknown = (node instanceof HTMLUnknownElement);
+          isUnknown = (node instanceof HTMLUnknownElement),
+          attr;
 
       for(var i=0,lenn=attrs.length;i<lenn;i++)
       { 
-        (function(i,attr){
-          /* matches an array of _start and end looking for binds in the attribute value */
-          if(attr.value.match(getMatch()))
+        attr = attrs[i];
+        /* matches an array of _start and end looking for binds in the attribute value */
+        if(attr.value.match(getMatch()))
+        {
+          /*specifies bind type: component|attribute */
+          var type = (isUnknown ? 'component' : 'attribute'),
+
+              /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
+              binder = getBindObject(binds,type,attr.value,splitText(attr.value),(isUnknown ? '' : attr.name),'value',attr,node);
+
+          /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
+          for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
           {
-            /*specifies bind type: component|attribute */
-            var type = (isUnknown ? 'component' : 'attribute'),
-
-                /* The bind constructor: @Params (type)component|for|text, (text)fullString, (listener) property, (property) property, (target) local node, (Element) real Node/Element */
-                binder = getBindObject(binds,type,attr.value,splitText(attr.value),(isUnknown ? '' : attr.name),'value',attr,node);
-
-            /* lop each bind string eg: ["Hello","{{name}}",", ","{{greeting}}"] */
-            for(var x=0,len=binder.prototype.bindText.length;x<len;x++)
+            var btext = binder.prototype.bindText[x];
+            /* if this is a bind */
+            if(btext.indexOf(_start) === 0)
             {
-              (function(x,btext){
-                /* if this is a bind */
-                if(btext.indexOf(_start) === 0)
-                {
-                  /* create new bind object and attach to the binds list for returning */
-                  var bind = new binder(btext);
-                  binder.prototype.bindText[x] = bind;
-                  if(binds[bind.key] === undefined) binds[bind.key] = [];
-                  binds[bind.key].push(bind);
-                  bind.id = (binds[bind.key].length-1);
-                }
-              }(x,binder.prototype.bindText[x]));
+              /* create new bind object and attach to the binds list for returning */
+              var bind = new binder(btext);
+              binder.prototype.bindText[x] = bind;
+              if(binds[bind.key] === undefined) binds[bind.key] = [];
+              binds[bind.key].push(bind);
+              bind.id = (binds[bind.key].length-1);
             }
           }
-        }(i,attrs[i]))
+        }
       }
     }
     
@@ -222,7 +220,8 @@ define(['KB'],function(kb){
     function getBindObject(binds,type,text,bindtext,listener,prop,target,element)
     {
       var isEvent = ((type === 'attribute' && _domevents.indexOf(target.name) !== -1) || (type === 'component' && target.name && _domevents.indexOf(target.name) !== -1)),
-          isInput = (element.tagName.toLowerCase() === 'input');
+          isInput = (element.tagName.toLowerCase() === 'input'),
+          isRadio = (element.type === 'radio' || element.type === 'check');
       
       
       if(isEvent) element.stopChange().removeAttribute(target.name);
@@ -238,6 +237,7 @@ define(['KB'],function(kb){
         this.id = 0;
         this.isEvent = isEvent;
         this.isInput = isInput;
+        this.isRadio = isRadio;
 
         /* updates prototype bind text to have the local object inside the array in replacement of string text */
         this.__proto__.bindText = this.__proto__.bindText.map(function(v){
@@ -258,7 +258,7 @@ define(['KB'],function(kb){
             if(typeof e !== 'object' || e.value === undefined) e = {value:e};
             if(typeof self._data.stopChange === 'function')
             {
-              self._data.set(self.key,e.value);
+              self._data.stopChange().set(self.key,e.value);
             }
             else
             {
@@ -319,7 +319,7 @@ define(['KB'],function(kb){
     /* used for value to set and refresh current value */
     function bindSet(v)
     {
-      if(this._data.set) this._data.set(this.key,v);
+      if(this._data.set) this._data.stopChange().set(this.key,v);
     }
     
     /* checks if the bind element has been removed from the dom */
@@ -357,7 +357,7 @@ define(['KB'],function(kb){
       
       if(bindText.length === 1)
       {
-        if(typeof bindText[0].value === 'string')
+        if(typeof bindText[0].value !== 'function' && typeof bindText[0].value !== 'object')
         {
           return filter(target,bindText);
         }
@@ -411,7 +411,10 @@ define(['KB'],function(kb){
             {
               /* target is either 'attributeNode' or a textNode, bindProperty should either be 'textContent' or 'value' */
               this.bindTarget[this.bindProperty] = filterValue(this,this.bindText);
-              if(this.isInput) this.element.stopChange()[this.bindTarget.name] = filterValue(this,this.bindText);
+              if(this.isInput)
+              {
+                this.element.stopChange()[this.bindTarget.name] = filterValue(this,this.bindText);
+              }
             }
           }
         }
@@ -434,41 +437,39 @@ define(['KB'],function(kb){
 
       for(var x=0,len=this.bindNames.length;x<len;x++)
       {
-        (function(x,bindName,bindMap){
-          /* as we loop throught the bind names we check if 'konnektdt' lib is being used, if so we add the appropriate listeners for the data */
-          if(bindMap._data.addDataUpdateListener)
+        /* as we loop throught the bind names we check if 'konnektdt' lib is being used, if so we add the appropriate listeners for the data */
+        if(vm.addDataUpdateListener)
+        {
+          /* if data set does not exist we create it */
+          if(!vm.exists(this.bindNames[x]))
           {
-            /* if data set does not exist we create it */
-            if(!bindMap._data.exists(bindName))
-            {
-              console.warn("No property by the name %o exists on this data set %o",bindName,bindMap._data);
-              bindMap._data.add(bindName,(bindMap.value));
-            }
-
-            /* update value with data set value, runs refresh command */
-            bindMap.refresh();
-            if(bindMap.type !== 'component' && bindMap.type !== 'for')
-            {
-              bindMap.isConnected = true;
-
-              bindMap._data.getLayer(bindMap.key).addDataUpdateListener(bindName,bindMap.updateDom);
-            }
-
-            /* bind to array change listeners methods */
-            else if(bindMap.type === 'for' && bindMap._data.addDataUpdateListener)
-            {
-                /* clear html for the list */
-                bindMap.element.stopChange().innerHTML = "";
-              
-                bindMap._data.getLayer(bindMap.key).addDataMethodUpdateListener(bindMap.updateLoop)
-                .addDataDeleteListener(bindMap.updateLoop);
-            }
+            console.warn("No property by the name %o exists on this data set %o",this.bindNames[x],vm);
+            vm.add(this.bindNames[x],(this.value));
           }
-          else
+
+          /* update value with data set value, runs refresh command */
+          this.refresh();
+          if(this.type !== 'component' && this.type !== 'for')
           {
-            /* **FUTURE** allow standard object setting */
+            this.isConnected = true;
+
+            vm.getLayer(this.key).addDataUpdateListener(this.bindNames[x],this.updateDom);
           }
-        }(x,this.bindNames[x],this.bindMaps[x]))
+
+          /* bind to array change listeners methods */
+          else if(this.type === 'for' && vm.addDataUpdateListener)
+          {
+              /* clear html for the list */
+              this.element.stopChange().innerHTML = "";
+
+              vm.getLayer(this.key).addDataMethodUpdateListener(this.updateLoop)
+              .addDataDeleteListener(this.updateLoop);
+          }
+        }
+        else
+        {
+          /* **FUTURE** allow standard object setting */
+        }
       }
       
       
@@ -477,14 +478,15 @@ define(['KB'],function(kb){
     }
     
     /* loops through all maps and reconnects them to another data source */
-    function loopConnect(maps,data)
+    function loopConnect(maps)
     {
       for(var x=0,keys=Object.keys(maps),len=keys.length;x<len;x++)
       {
+        
         for(var i=0,lenn=maps[keys[x]].length;i<lenn;i++)
         {
           //maps[keys[x]][i].__proto__._data = data;
-          maps[keys[x]][i].refresh();
+          maps[keys[x]][i].unconnect().connect(maps[keys[x]][i]._data);
         }
       }
     }
@@ -560,12 +562,12 @@ define(['KB'],function(kb){
         
         for(var x=0,len=this._data.get(this.key).length;x<len;x++)
         {
-          var _curr = this.element.children[x];
+          var _curr = this.element.children[x].kb_viewmodel;
           //loopConnect(this.element.children[x].kb_maps,this.element.children[this.element.children[x].kb_viewmodel.k_id].kb_viewmodel);
-          for(var i=0,keys=Object.keys(_curr.kb_viewmodel.pointers),lenn=keys.length;i<lenn;i++)
+          for(var i=0,keys=Object.keys(_curr.pointers),lenn=keys.length;i<lenn;i++)
           {
             /* flush events */
-            _curr.kb_viewmodel.pointers[keys[i]].key = x;
+            //_curr.kb_viewmodel.pointers[keys[i]].key = x;
             /*(function(obj,x,key){
               Object.defineProperty(obj.element.children[x].kb_viewmodel,key,{
                 get:function(){return obj._data.get(obj.key)[x][key]},
