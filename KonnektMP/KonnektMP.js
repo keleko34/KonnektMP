@@ -15,7 +15,20 @@ define(['kb'],function(kb){
         _kb = kb().call(),
 
         /* All dom based events such as onclick */
-        _domevents = Object.keys(HTMLElement.prototype).filter(function(v){return v.indexOf('on') === 0});
+        _domevents = Object.keys(HTMLElement.prototype).filter(function(v){return v.indexOf('on') === 0}),
+        
+        _events = {
+          loopitem:[]
+        },
+        
+        _onEvent = function(e)
+        {
+          var _listeners = _events[e.event];
+          for(var x=0,len=_listeners.length;x<len;x++)
+          {
+            _listeners[x](e);
+          }
+        }
 
     function KonnektMP(node)
     {
@@ -103,6 +116,42 @@ define(['kb'],function(kb){
         console.error("Class: KonnektMP Method: 'register', A template by the name %o already exists",name);
       }
       return this;
+    }
+    
+    /* Event Handlers */
+    
+    /* adds an event listener with the appropriate key */
+    KonnektMP.addEventListener = function(key,func)
+    {
+      if(_events[key] !== undefined)
+      {
+        _events[key].push(func);
+      }
+      else
+      {
+        console.error("Class: KonnektMP Method: 'addEventListener', No event exists with the name %o",key);
+      }
+      return KonnektMP;
+    }
+    
+    /* removes event listener, dependent on key and function being the same */
+    KonnektMP.removeEventListener = function(key,func)
+    {
+      if(_events[key] !== undefined)
+      {
+        for(var x=0,len=_events[key].length;x<len;x++)
+        {
+          if(_events[key][x].toString() === func.toString())
+          {
+            _events[key].splice(x,1);
+          }
+        }
+      }
+      else
+      {
+        console.error("Class: KonnektMP Method: 'removeEventListener', No event exists with the name %o",key);
+      }
+      return KonnektMP;
     }
 
     /* Descriptors */
@@ -333,6 +382,7 @@ define(['kb'],function(kb){
         binder.prototype.bindText = bindText;
         binder.prototype.listener = 'textContent';
         binder.prototype.attr = 'textContent';
+        binder.prototype.localAttr = 'textContent';
         binder.prototype.local = node;
         binder.prototype.node = node.parentElement;
         binder.prototype.binds = binds;
@@ -379,10 +429,12 @@ define(['kb'],function(kb){
           binder.prototype.bindText = bindText;
           binder.prototype.isEvent = (_domevents.indexOf(attrs[i].name) !== -1);
           binder.prototype.isInput = (node.tagName.toLowerCase() === 'input');
+          binder.prototype.isRadio = (binder.prototype.isInput ? (['radio','checkbox'].indexOf(node.type) !== -1) : false);
           binder.prototype.listener = attrs[i].name;
           binder.prototype.attr = attrs[i].name;
-          binder.prototype.local = node;
-          binder.prototype.node = node.parentElement;
+          binder.prototype.localAttr = 'value';
+          binder.prototype.local = attrs[i];
+          binder.prototype.node = node;
           binder.prototype.binds = binds;
 
           if(binder.prototype.isEvent)
@@ -428,17 +480,37 @@ define(['kb'],function(kb){
       {
         this.text = text;
         this.key = key;
+        this.keyLength = this.key.split('.').length;
+        this.localKey = this.key.split('.').pop();
         this.filters = sortFilters(splitFilters(text));
         this.component = (this.type === 'for' ? splitFor(text)[1] : undefined);
         this.id = 0;
       }
-
-      function mapDataPoint(obj)
+      
+      function reconnect()
+      {
+        if(this.type !== 'for')
+        {
+          this._data.getLayer(this.key).removeDataUpdateListener(this.localKey,this.dataListener);
+          if(this.bindText.length === 1)
+          {
+            this.node.removeAttrUpdateListener(this.listener,this.domListener);
+          }
+        }
+        else
+        {
+          data.getLayer(this.key)
+          .removeDataMethodUpdateListener(this.extraListener);
+        }
+        this.connect(this._data);
+        return this;
+      }
+      
+      function connect(data)
       {
         var self = this;
 
-        this._data = obj;
-        Object.defineProperty(this,'value',setPointer(obj,this.key),true,true);
+        this._data = data;
         if(this.type !== 'for')
         {
           this.dataListener = function(e){
@@ -452,33 +524,98 @@ define(['kb'],function(kb){
             }
           }
 
-          obj.getLayer(this.key)
-          .addDataUpdateListener(this.key,this.dataListener);
+          data.getLayer(this.key)
+          .addDataUpdateListener(this.localKey,this.dataListener);
+          
+          if(this.bindText.length === 1)
+          {
+            this.domListener = function(e)
+            {
+              self.setData(e.value);
+            }
+            
+            this.node.addAttrUpdateListener(this.listener,this.domListener);
+          }
         }
         else
         {
           this.dataListener = function(e){
+            if(e.type === 'postset' && (!e.oldValue || (e.oldValue.length === 0)))
+            {
+              e.event = 'create';
+            }
             self.setLoop(e.key,e.event);
           }
 
-          this.extraListener = function(e){
-            self.setLoop('*','organize');
+          data.getLayer(this.key)
+          .addDataMethodUpdateListener(this.dataListener);
+        }
+        
+        if(this.type !== 'for')
+        {
+          /* first check storage to data */
+          if(!!this.filters.model && this.filters.model.length !== 0)
+          {
+            this._data.stopChange().set(this.key,getModel(this.filters.model));
+          }
+          else if(!!this.filters.session && this.filters.session.length !== 0)
+          {
+            this._data.stopChange().set(this.key,getSession(this.filters.session));
+          }
+          else if(!!this.filters.local && this.filters.local.length !== 0)
+          {
+            this._data.stopChange().set(this.key,getLocal(this.filters.local));
           }
 
-          obj.getLayer(this.key)
-          .addDataUpdateListener('*',this.dataListener)
-          .addMethodUpdateListener(this.extraListener);
+          /* then update dom */
+          if(this.isEvent)
+          {
+            this.node.stopChange()[this.attr] = this._data.get(this.key);
+          }
+          else if(this.key === 'innerHTML')
+          {
+            /* first clear binding text, then append nodes */
+            this.node.stopChange().innerHTML = "";
+            inserthtml(this.node,this._data.innerHTML);
+          }
+          else
+          {
+            this.local.stopChange()[this.localAttr] = runThroughBinds(this.bindText);
+            if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1)) this.node.stopChange()[this.attr] = this._data.get(this.key);
+          }
         }
+        
+        return this;
       }
-
-      function mapDomPoint()
+      
+      function runThroughBinds(binds)
       {
-        if(this.bindText.length === 1)
+        if(binds.length !== 0)
         {
-          var self = this;
-          this.node.addAttrUpdateListener(this.listener,function(e){
-            self.setData(e.value);
-          });
+          var text = '';
+          for(var x=0,len=binds.length;x<len;x++)
+          {
+            if(typeof binds[x] === 'string')
+            {
+              text += binds[x];
+            }
+            else
+            {
+              if(binds[x]._data === undefined)
+              {
+                text += binds[x].text;
+              }
+              else
+              {
+                text += runThroughFilters(binds[x]._data.get(binds[x].key),binds[x].filters.filters,binds[x]._data.filters);
+              }
+            }
+          }
+          return text;
+        }
+        else
+        {
+          return runThroughFilters(binds[0]._data.get(binds[0].key),binds[0].filters.filters,binds[0]._data.filters);
         }
       }
       
@@ -489,9 +626,32 @@ define(['kb'],function(kb){
         },val);
       }
       
+      function runThroughForFilters(data,filters,filterFuncs,index)
+      {
+        return filters.reduce(function(dt,filter){
+          return (filterFuncs[filter] ? filterFuncs[filter](dt,index) : dt);
+        },data);
+      }
+      
+      function inserthtml(node,html)
+      {
+        for(var x=0,len=html.length;x<len;x++)
+        {
+          node.stopChange().appendChild(html[x])
+        }
+      }
+      
+      function getModel(filters)
+      {
+        if(!!filters && window.model)
+        {
+          return window.model.get(filters[0]);
+        }
+      }
+      
       function setModel(value,filters)
       {
-        if(filters.length !== 0 && window.model)
+        if(!!filters && filters.length !== 0 && window.model)
         {
           for(var x=0,len=filters.length;x<len;x++)
           {
@@ -500,9 +660,17 @@ define(['kb'],function(kb){
         }
       }
       
+      function getLocal(filters)
+      {
+        if(!!filters && window.localStorage)
+        {
+          return localStorage.getItem(filters[0]);
+        }
+      }
+      
       function setLocal(filters,value)
       {
-        if(filters.length !== 0)
+        if(!!filters && filters.length !== 0 && window.localStorage)
         {
           for(var x=0,len=filters.length;x<len;x++)
           {
@@ -511,9 +679,17 @@ define(['kb'],function(kb){
         }
       }
       
-      function setSession(filers,value)
+      function getSession(filters)
       {
-        if(filters.length !== 0)
+        if(!!filters && window.sessionStorage)
+        {
+          return sessionStorage.getItem(filters[0]);
+        }
+      }
+      
+      function setSession(filters,value)
+      {
+        if(!!filters && filters.length !== 0 && window.sessionStorage)
         {
           for(var x=0,len=filters.length;x<len;x++)
           {
@@ -527,11 +703,12 @@ define(['kb'],function(kb){
         /* run through vmFilters + post set storage and model filters */
         value = runThroughFilters(value,this.filters.vmFilters,this._data.filters);
         
-        this._data.set(this.key,value);
+        this._data.stopChange().set(this.key,value);
         
         setModel(this.filters.model,value);
         setSession(this.filters.session,value);
         setLocal(this.filters.local,value);
+        return this;
       }
 
       function setDom(value)
@@ -541,7 +718,25 @@ define(['kb'],function(kb){
         setSession(this.filters.session,value);
         setLocal(this.filters.local,value);
         
-        this.local[this.attr] = runThroughFilters(value,this.filters.filters,this._data.filters);
+        if(this.isEvent)
+        {
+          this.node.stopChange()[this.attr] = this._data.get(this.key);
+        }
+        else if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1))
+        {
+          this.node.stopChange()[this.attr] = this._data.get(this.key);
+        }
+        else if(this.key === 'innerHTML')
+        {
+          /* first clear binding text, then append nodes */
+          this.node.stopChange().innerHTML = "";
+          inserthtml(this.node,this._data.innerHTML);
+        }
+        else
+        {
+          this.local.stopChange()[this.localAttr] = runThroughBinds(this.bindText);
+        }
+        return this;
       }
 
       function setLoop(index,event)
@@ -549,73 +744,103 @@ define(['kb'],function(kb){
         switch(event)
         {
           case 'create':
-            addPointer(index);
+            this.addPointer(index);
           break;
           case 'delete':
-            removePointer(index);
+            this.removePointer(index);
           break;
           case 'set':
             this.reapplyPointer(index);
           break;
-          case 'organize':
-            for(var x=0,len=this.value.length;x<len;x++)
+          default:
+            if(event !== 'push')
             {
-              this.reapplyPointer(x);
+              for(var x=0,len=this._data.getLayer(this.key).length;x<len;x++)
+              {
+                this.reapplyPointer(x);
+              }
             }
           break;
         }
+        return this;
+      }
+      
+      function createloop()
+      {
+        this.node.stopChange().innerHTML = "";
+        var forData = runThroughForFilters(this._data.get(this.key),this.filters.filters,this._data.filters);
+        for(var x=0,len=forData.length;x<len;x++)
+        {
+          this.setLoop(x,'create');
+        }
+        return this;
       }
 
       function reapplyPointer(index)
       {
-        var childData = this.node.children[index].kb_viewmodel;
-        for(var x=0,keys=Object.keys(this.value[index],'all'),len=keys.length;x<len;x++)
+        var childMaps = this.node.children[index].kb_maps,
+            childPointers = this.node.children[index].kb_viewmodel.pointers;
+        for(var x=0,keys=Object.keys(childPointers),len=keys.length;x<len;x++)
         {
-          childData.addPointer(this.value,keys[x]);
+          var _maps = childMaps[keys[x]];
+          if(_maps !== undefined)
+          {
+            for(var i=0,lenn=_maps.length;i<lenn;i++)
+            {
+              _maps[i].reconnect();
+            }
+          }
         }
+        return this;
       }
 
       function addPointer(index)
       {
-        var newNode =  document.createElement(this.component);
-        for(var x=0,keys=Object.keys(this.value[index],'all'),len=keys.length;x<len;x++)
+        
+        var newNode =  document.createElement(this.component),
+            data = runThroughForFilters(this._data.getLayer(this.key),this.filters.filters,this._data.filters,index)[index];
+        for(var x=0,keys=Object.keys(data,'all'),len=keys.length;x<len;x++)
         {
-          if(!newNode.k_post)
-          {
-            newNode.k_post = {};
-            newNode.k_post.pointers = {};
-          }
-          newNode.k_post.pointers[keys[x]] = this.value[index];
+          if(!newNode.k_post) newNode.k_post = {};
+          newNode.k_post[keys[x]] = data;
         }
         if(index >= this.node.children.length)
         {
-          this.node.appendChild(newNode);
+          this.node.stopChange().appendChild(newNode);
         }
         else
         {
-          this.node.insertBefore(newNode,this.node.children[index]);
+          this.node.stopChange().insertBefore(newNode,this.node.children[index]);
         }
+        _onEvent({event:'loopitem',node:newNode,parent:this.node});
+        return this;
       }
 
       function removePointer(index)
       {
-        this.unsync();
-        this.node.removeChild(this.node.children[index]);
+        var childMaps = this.node.children[index].kb_maps,
+            childPointers = this.node.children[index].kb_viewmodel.pointers;
+        for(var x=0,keys=Object.keys(childPointers),len=keys.length;x<len;x++)
+        {
+          var _maps = childMaps[keys[x]];
+          if(!!_maps)
+          {
+            for(var i=0,lenn=_maps.length;i<lenn;i++)
+            {
+              _maps[i].unsync();
+              _maps[i] = null;
+              delete _maps[i];
+            }
+            
+          }
+        }
+        this.node.stopChange().removeChild(this.node.children[index]);
+        return this;
       }
 
       function unsync()
       {
-        Object.defineProperty(this,'value',setDescriptor(undefined,true,true,false));
-        delete this.value;
         this.__proto__.bindText = null;
-
-        this._data.getLayer(this.key)
-        .removeDataUpdateListener(this.dataListener);
-
-        if(this.extraListener)
-        {
-          this._data.getLayer(this.key).removeMethodUpdateListener(this.extraListener);
-        }
 
         this._data = null;
         delete this._data;
@@ -625,14 +850,16 @@ define(['kb'],function(kb){
 
         this.binds = null;
         delete this.binds;
+        return this;
       }
 
       Object.defineProperties(bind.prototype,{
         addPointer:setDescriptor(addPointer),
         removePointer:setDescriptor(removePointer),
         reapplyPointer:setDescriptor(reapplyPointer),
-        mapDomPoint:setDescriptor(mapDomPoint),
-        mapDataPoint:setDescriptor(mapDataPoint),
+        connect:setDescriptor(connect),
+        reconnect:setDescriptor(reconnect),
+        createloop:setDescriptor(createloop),
         setData:setDescriptor(setData),
         setDom:setDescriptor(setDom),
         setLoop:setDescriptor(setLoop),
