@@ -196,6 +196,18 @@ define(['kb'],function(kb){
     {
       return new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(for)(.*?)(loop)(.*?)(\\'+_end.split('').join('\\')+')','g');
     }
+    
+    /* returns a regex that looks for all insert maps with the passed name */
+    function getInnerMapper(name)
+    {
+      return new RegExp('('+_start.split('').join('\\')+'>'+name+'(.*?)'+_end.split('').join('\\')+')','g');
+    }
+    
+    /* returns a regex that captures all insert maps in a string */
+    function innerMapperKeys()
+    {
+      return new RegExp('('+_start.split('').join('\\')+'>(.*?)'+_end.split('').join('\\')+')','g');
+    }
 
     /* returns an array of standard text and bindings, binding texts are later converted to bind objects
        EXAMPLE::
@@ -324,12 +336,82 @@ define(['kb'],function(kb){
         }
         return [];
     }
+    
+    /* Helpers */
+    function runThroughBinds(binds)
+    {
+      if(binds.length !== 0)
+      {
+        var text = '';
+        for(var x=0,len=binds.length;x<len;x++)
+        {
+          if(typeof binds[x] === 'string')
+          {
+            text += binds[x];
+          }
+          else
+          {
+            if(binds[x]._data === undefined)
+            {
+              text += binds[x].text;
+            }
+            else
+            {
+              text += runThroughFilters(binds[x]._data.get(binds[x].key),binds[x].filters.filters,binds[x]._data.filters);
+            }
+          }
+        }
+        return text;
+      }
+      else
+      {
+        return runThroughFilters(binds[0]._data.get(binds[0].key),binds[0].filters.filters,binds[0]._data.filters);
+      }
+    }
 
+    function runThroughFilters(val,filters,filterFuncs)
+    {
+      for(var x=0,len=filters.length;x<len;x++)
+      {
+        if(filterFuncs[filters[x]]) val = filterFuncs[filters[x]](val);
+      }
+      return val;
+    }
+
+    function runThroughForFilters(data,filters,filterFuncs,index)
+    {
+      for(var x=0,len=filters.length;x<len;x++)
+      {
+        if(filterFuncs[filters[x]]) filterFuncs[filters[x]](data,index);
+      }
+      return data;
+    }
+    
     /* Prototyped Methods */
 
     /* need better methods to approach adding and swapping filters for bindings */
 
     /* Main Mapping Methods */
+    KonnektMP.insert = function(html,vm)
+    {
+      var mapper = innerMapperKeys(),
+          innerMap,
+          key,
+          filters,
+          value;
+      while(innerMap = mapper.exec(html))
+      {
+        key = splitKey(innerMap[1]);
+        filters = splitFilters(innerMap[1]);
+        value = vm.get(key);
+        if(value)
+        {
+          html = html.replace(getInnerMapper(key),runThroughFilters(value,filters,vm.filters));
+        }
+      }
+      return html;
+    }
+    
     function map(node)
     {
       function loopMap(childNodes,binds)
@@ -469,7 +551,8 @@ define(['kb'],function(kb){
       register:setDescriptor(KonnektMP.register),
       isRegistered:setDescriptor(KonnektMP.isRegistered),
       getUnknown:setDescriptor(KonnektMP.getUnknown),
-      map:setDescriptor(map)
+      map:setDescriptor(map),
+      insert:setDescriptor(KonnektMP.insert)
     });
 
     /* Bind object and methods */
@@ -586,51 +669,6 @@ define(['kb'],function(kb){
         }
         
         return this;
-      }
-      
-      function runThroughBinds(binds)
-      {
-        if(binds.length !== 0)
-        {
-          var text = '';
-          for(var x=0,len=binds.length;x<len;x++)
-          {
-            if(typeof binds[x] === 'string')
-            {
-              text += binds[x];
-            }
-            else
-            {
-              if(binds[x]._data === undefined)
-              {
-                text += binds[x].text;
-              }
-              else
-              {
-                text += runThroughFilters(binds[x]._data.get(binds[x].key),binds[x].filters.filters,binds[x]._data.filters);
-              }
-            }
-          }
-          return text;
-        }
-        else
-        {
-          return runThroughFilters(binds[0]._data.get(binds[0].key),binds[0].filters.filters,binds[0]._data.filters);
-        }
-      }
-      
-      function runThroughFilters(val,filters,filterFuncs)
-      {
-        return filters.reduce(function(val,filter){
-          return (filterFuncs[filter] ? filterFuncs[filter](val) : val);
-        },val);
-      }
-      
-      function runThroughForFilters(data,filters,filterFuncs,index)
-      {
-        return filters.reduce(function(dt,filter){
-          return (filterFuncs[filter] ? filterFuncs[filter](dt,index) : dt);
-        },data);
       }
       
       function inserthtml(node,html)
@@ -779,7 +817,8 @@ define(['kb'],function(kb){
       function reapplyPointer(index)
       {
         var childMaps = this.node.children[index].kb_maps,
-            childPointers = this.node.children[index].kb_viewmodel.pointers;
+            childPointers = this.node.children[index].kb_viewmodel.pointers,
+            loopid = this.node.children[index].kb_viewmodel.loopid;
         for(var x=0,keys=Object.keys(childPointers),len=keys.length;x<len;x++)
         {
           var _maps = childMaps[keys[x]];
@@ -791,18 +830,21 @@ define(['kb'],function(kb){
             }
           }
         }
+        this.node.children[index].kb_viewmodel.x = index;
+        this.node.children[index].kb_viewmodel.loopid = loopid.substring(0,(loopid.lastIndexOf('_')+1))+index;
         return this;
       }
 
       function addPointer(index)
       {
-        
         var newNode =  document.createElement(this.component),
             data = runThroughForFilters(this._data.getLayer(this.key),this.filters.filters,this._data.filters,index)[index];
         for(var x=0,keys=Object.keys(data,'all'),len=keys.length;x<len;x++)
         {
           if(!newNode.k_post) newNode.k_post = {};
           newNode.k_post[keys[x]] = data;
+          newNode.k_post.x = index;
+          newNode.k_post.loopid = this.component+"_"+index;
         }
         if(index >= this.node.children.length)
         {
@@ -835,6 +877,12 @@ define(['kb'],function(kb){
           }
         }
         this.node.stopChange().removeChild(this.node.children[index]);
+        for(var x=0,len=this.node.children.length;x<len;x++)
+        {
+          this.node.children[x].kb_viewmodel.x = x;
+          var loopid = this.node.children[x].kb_viewmodel.loopid;
+          this.node.children[x].kb_viewmodel.loopid = loopid.substring(0,(loopid.lastIndexOf('_')+1))+x;
+        }
         return this;
       }
 
