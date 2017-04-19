@@ -401,7 +401,7 @@ define(['kb'],function(kb){
           value;
       while(innerMap = mapper.exec(html))
       {
-        key = splitKey(innerMap[1]);
+        key = splitKey(innerMap[1]).replace('>','');
         filters = splitFilters(innerMap[1]);
         value = vm.get(key);
         if(value)
