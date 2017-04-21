@@ -196,18 +196,6 @@ define(['kb'],function(kb){
     {
       return new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(for)(.*?)(loop)(.*?)(\\'+_end.split('').join('\\')+')','g');
     }
-    
-    /* returns a regex that looks for all insert maps with the passed name */
-    function getInnerMapper(name)
-    {
-      return new RegExp('('+_start.split('').join('\\')+'>'+name+'(.*?)'+_end.split('').join('\\')+')','g');
-    }
-    
-    /* returns a regex that captures all insert maps in a string */
-    function innerMapperKeys()
-    {
-      return new RegExp('('+_start.split('').join('\\')+'>(.*?)'+_end.split('').join('\\')+')','g');
-    }
 
     /* returns an array of standard text and bindings, binding texts are later converted to bind objects
        EXAMPLE::
@@ -253,9 +241,7 @@ define(['kb'],function(kb){
         /* removes _start and _end from the string: "name | toUpperCase" */
         return b.replace(new RegExp('['+_start+_end+']','g'),'')
         /* removes pipe and all that follows: "name "*/
-        .replace(new RegExp('\\'+_pipe.split('').join('\\')+'(.*)'),'')
-        /* removes any remaining spaces: "name" */
-        .replace(/\s/g,'');
+        .replace(new RegExp('\\'+_pipe.split('').join('\\')+'(.*)'),'');
     }
 
     /* takes a bind and returns array of the filter names
@@ -337,6 +323,45 @@ define(['kb'],function(kb){
         return [];
     }
     
+    
+    function getSet(key)
+    {
+      if(key.split('==').length < 2 && key.split('<=').length < 2 && key.split('>=').length < 2 && key.indexOf('=') !== -1)
+      {
+        return key.substring((key.indexOf('=')+1),key.length);
+      }
+      return undefined;
+    }
+    
+    /* Parses a key to look for subTypes and included filters
+       >key = insert
+       <key=val = outsert
+       key=val = setbind
+       key(==|>|<|>=|<=)val = filter
+       key(+|-|*|/)val = filter
+       EXAMPLE::
+        string: "{{ >key }}"
+        return: {sub:'insert'}
+    */
+    function parseKey(key)
+    {
+      var isInsert = key.match(/^(\s*)(>)((.*?)+)/),
+          isOutsert =  key.match(/^(\s*)(<)((.*?)+)/);
+      
+      key = key.replace(/(^<|^>)((.*?)+)/,'$2');
+      
+      var set = getSet(key),
+          boolFilter = key.match(/((==|<=|>=|<|>)((.*?)+))/g),
+          mathFilter = key.match(/(([\+\*-\/])((.*?)+))/g);
+      return {
+        type:(isInsert ? 'insert' : (isOutsert ? 'outsert' : undefined)),
+        set:(set !== key ? set : undefined),
+        filters:(boolFilter || mathFilter ? {
+          boolFilter:(boolFilter ? eval("(function(){ return function(v){ return (v"+boolFilter[0]+");};}())") : undefined),
+          mathFilter:(mathFilter ? eval("(function(){ return function(v){ return (v"+mathFilter[0]+");};}())") : undefined)
+        } : undefined)};
+    }
+    
     /* Helpers */
     function runThroughBinds(binds)
     {
@@ -390,27 +415,6 @@ define(['kb'],function(kb){
     /* Prototyped Methods */
 
     /* need better methods to approach adding and swapping filters for bindings */
-
-    /* Main Mapping Methods */
-    KonnektMP.insert = function(html,vm)
-    {
-      var mapper = innerMapperKeys(),
-          innerMap,
-          key,
-          filters,
-          value;
-      while(innerMap = mapper.exec(html))
-      {
-        key = splitKey(innerMap[1]).replace('>','');
-        filters = splitFilters(innerMap[1]);
-        value = vm.get(key);
-        if(value)
-        {
-          html = html.replace(getInnerMapper(key),runThroughFilters(value,filters,vm.filters));
-        }
-      }
-      return html;
-    }
     
     function map(node)
     {
@@ -456,6 +460,7 @@ define(['kb'],function(kb){
       /* matches an array of _start and end looking for binds in the text */
       if(text.match(getMatch()))
       {
+        
         var bindText = splitText(text),
             binder = CreateBind();
 
@@ -561,13 +566,18 @@ define(['kb'],function(kb){
     {
       function bind(text,key)
       {
+        var parsedKey = parseKey(key);
+        
         this.text = text;
-        this.key = key;
+        this.key = key.replace(/(^>|^<*)(.*?)([=*+-\/<>]+)((.*?)+)/g,'$2').replace(/\s/g,'');
         this.keyLength = this.key.split('.').length;
         this.localKey = this.key.split('.').pop();
         this.filters = sortFilters(splitFilters(text));
         this.component = (this.type === 'for' ? splitFor(text)[1] : undefined);
         this.id = 0;
+        this.subType = parsedKey.subtype;
+        this.set = parsedKey.set;
+        this.inlineFilters = parsedKey.filters;
       }
       
       function reconnect()
@@ -596,6 +606,59 @@ define(['kb'],function(kb){
         this._data = data;
         if(this.type !== 'for')
         {
+          if(this.insert)
+          {
+            this.setDom(this._data.get(this.key));
+            this.unsync();
+            return;
+          }
+          
+          if(this.set)
+          {
+            var isNumber = (!isNaN(parseInt(this.set,10)) && parseInt(this.set,10).toString().length === this.set.length),
+                isBool = (this.set.replace(/\s/g,'') === 'true' || this.set.replace(/\s/g,'') === 'false'),
+                isString = (this.set.indexOf('"') !== -1 || this.set.indexOf("'") !== -1);
+            
+            if(isNumber)
+            {
+              this.set = parseInt(this.set,10)
+            }
+            else if(isBool)
+            {
+              this.set = (this.set.replace(/\s/g,'') === 'true');
+            }
+            else if(isString)
+            {
+              this.set = this.set.replace(/((\s*\"|\')(.*?)(\"|\'))/g,'$3');
+            }
+            else
+            {
+              this.set = undefined;
+            }
+            if(this.set) this._data.set(this.key,this.set);
+          }
+          
+          if(this.outsert)
+          {
+            this.setDom("");
+            this.unsync();
+            return;
+          }
+          
+          if(this.inlineFilters)
+          {
+            if(this.inlineFilters.boolFilter)
+            {
+              this.filters.filters.unshift('boolFilter');
+              this._data.filters.boolFilter = this.inlineFilters.boolFilter;
+            }
+            else
+            {
+              this.filters.filters.unshift('mathFilter');
+              this._data.filters.mathFilter = this.inlineFilters.mathFilter;
+            }
+          }
+          
           this.dataListener = function(e){
             if(e.event === 'delete')
             {
