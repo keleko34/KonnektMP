@@ -382,7 +382,8 @@ define(['kb'],function(kb){
             }
             else
             {
-              text += runThroughFilters(binds[x]._data.get(binds[x].key) || '',binds[x].filters.filters,binds[x]._data.filters);
+              var val = binds[x]._data.get(binds[x].key);
+              text += runThroughFilters((val !== undefined ? val : ''),binds[x].filters.filters,binds[x]._data.filters);
             }
           }
         }
@@ -729,7 +730,8 @@ define(['kb'],function(kb){
             this.local.stopChange()[this.localAttr] = runThroughBinds(this.bindText);
             if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1))
             {
-              this.node.stopChange()[this.attr] = (this._data.get(this.key) || '');
+              var val = this._data.get(this.key);
+              this.node.stopChange()[this.attr] = (val !== undefined ? val : '');
             }
           }
         }
@@ -841,7 +843,8 @@ define(['kb'],function(kb){
           this.local.stopChange()[this.localAttr] = runThroughBinds(this.bindText);
           if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1))
           {
-            this.node.stopChange()[this.attr] = (this._data.get(this.key) || '');
+            var val = this._data.get(this.key);
+            this.node.stopChange()[this.attr] = (val !== undefined ? val : '');
           }
         }
         return this;
