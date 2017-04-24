@@ -593,11 +593,33 @@ define(['kb'],function(kb){
         }
         else
         {
-          data.getLayer(this.key)
+          this._data.getLayer(this.key)
           .removeDataMethodUpdateListener(this.extraListener);
         }
         this.connect(this._data);
         return this;
+      }
+      
+      function reset()
+      {
+        if(this.type === 'for')
+        {
+          this._data.getLayer(this.key)
+          .removeDataMethodUpdateListener(this.extraListener)
+          .addDataMethodUpdateListener(this.extraListener);
+        }
+        else
+        {
+           this._data.getLayer(this.key)
+          .removeDataUpdateListener(this.localKey,this.dataListener)
+          .addDataUpdateListener(this.localKey,this.dataListener);
+          
+          if(this.bindText.length === 1)
+          {
+            this.node.removeAttrUpdateListener(this.listener,this.domListener)
+            .addAttrUpdateListener(this.listener,this.domListener);
+          }
+        }
       }
       
       function connect(data)
@@ -985,7 +1007,8 @@ define(['kb'],function(kb){
         setDom:setDescriptor(setDom),
         setLoop:setDescriptor(setLoop),
         bindMaps:setDescriptor([]),
-        unsync:setDescriptor(unsync)
+        unsync:setDescriptor(unsync),
+        reset:setDescriptor(reset)
       })
 
       return bind;
