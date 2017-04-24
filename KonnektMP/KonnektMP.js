@@ -382,7 +382,7 @@ define(['kb'],function(kb){
             }
             else
             {
-              text += runThroughFilters(binds[x]._data.get(binds[x].key),binds[x].filters.filters,binds[x]._data.filters);
+              text += runThroughFilters(binds[x]._data.get(binds[x].key) || '',binds[x].filters.filters,binds[x]._data.filters);
             }
           }
         }
@@ -390,7 +390,7 @@ define(['kb'],function(kb){
       }
       else
       {
-        return runThroughFilters(binds[0]._data.get(binds[0].key),binds[0].filters.filters,binds[0]._data.filters);
+        return runThroughFilters(binds[0]._data.get(binds[0].key) || '',binds[0].filters.filters,binds[0]._data.filters);
       }
     }
 
@@ -727,7 +727,10 @@ define(['kb'],function(kb){
           else
           {
             this.local.stopChange()[this.localAttr] = runThroughBinds(this.bindText);
-            if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1)) this.node.stopChange()[this.attr] = this._data.get(this.key);
+            if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1))
+            {
+              this.node.stopChange()[this.attr] = (this._data.get(this.key) || '');
+            }
           }
         }
         
@@ -836,6 +839,10 @@ define(['kb'],function(kb){
         else
         {
           this.local.stopChange()[this.localAttr] = runThroughBinds(this.bindText);
+          if(this.isInput && (['value','checked'].indexOf(this.attr) !== -1))
+          {
+            this.node.stopChange()[this.attr] = (this._data.get(this.key) || '');
+          }
         }
         return this;
       }
