@@ -241,7 +241,7 @@ define(['kb'],function(kb){
         /* removes _start and _end from the string: "name | toUpperCase" */
         return b.replace(new RegExp('['+_start+_end+']','g'),'')
         /* removes pipe and all that follows: "name "*/
-        .replace(new RegExp('\\'+_pipe.split('').join('\\')+'(.*)'),'');
+        .replace(new RegExp('(\\'+_pipe.split('').join('\\')+'(.*?)+)','g'),'').replace(/\s/g,'');
     }
 
     /* takes a bind and returns array of the filter names
