@@ -53,8 +53,10 @@ define(['kb'],function(kb){
       /* set wrapper html and define class */
       this.wrapper.className = "Wrapper Wrapper__"+this.name;
       
-      
-      this.template = this.template.replace(getNodeMatch(),'<!--$1$2$3$4-->');
+      if(this.template.match(getNodeMatch()))
+      {
+        this.template = getEnclosedNodes(this.template);
+      }
     }
 
     KonnektMP.start = function(v)
@@ -202,7 +204,54 @@ define(['kb'],function(kb){
     
     function getNodeMatch()
     {
-      return new RegExp('(<\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>)(.|[\S\s]*?)(<\\/\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>)|(<{{.*?}}.*?>)','g');
+      return new RegExp('(<\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>|'+'<\\/\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'>)');
+    }
+    
+    function getEnclosedNodes(html)
+    {
+      var reg = getNodeMatch(),
+          split = html.split(reg).filter(Boolean),
+          splitdexes = {};
+      for(var x=0,key,keys,replaceKey,len=split.length;x<len;x++)
+      {
+        if(split[x].match(reg))
+        {
+          key = splitKey(split[x]).replace(/[<>]/g,'');
+          if(key.indexOf('/') === 0 && splitdexes[key.replace('/','')])
+          {
+            key = key.replace('/','');
+            keys = Object.keys(splitdexes[key],'array');
+            if(keys.length !== 0)
+            {
+              replaceKey = keys[(keys.length-1)];
+              split[replaceKey] = '<!--'+split[replaceKey];
+              splitdexes[key].splice(parseInt(replaceKey,10),1);
+              split[x] = split[x]+'-->';
+              keys = Object.keys(splitdexes[key],'array');
+              if(keys.length === 0)
+              {
+                splitdexes[key] = null;
+                delete splitdexes[key];
+              }
+            }
+          }
+          else
+          {
+            if(!splitdexes[key]) splitdexes[key] = [];
+            splitdexes[key][x] = split[x];
+          }
+        }
+      }
+      
+      for(var x=0,keys=Object.keys(splitdexes),len=keys.length;x<len;x++)
+      {
+        for(var i=0,keysI=Object.keys(splitdexes[keys[x]],'array'),lenn=keysI.length;x<len;x++)
+        {
+          split[keysI[i]] = '<!--'+split[keysI[i]]+'-->';
+        }
+      }
+      
+      return split.join('');
     }
 
     /* returns an array of standard text and bindings, binding texts are later converted to bind objects
