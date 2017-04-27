@@ -18,7 +18,8 @@ define(['kb'],function(kb){
         _domevents = Object.keys(HTMLElement.prototype).filter(function(v){return v.indexOf('on') === 0}),
         
         _events = {
-          loopitem:[]
+          loopitem:[],
+          replaceNode:[]
         },
         
         _onEvent = function(e)
@@ -51,6 +52,9 @@ define(['kb'],function(kb){
 
       /* set wrapper html and define class */
       this.wrapper.className = "Wrapper Wrapper__"+this.name;
+      
+      
+      this.template = this.template.replace(getNodeMatch(),'<!--$1$2$3$4-->');
     }
 
     KonnektMP.start = function(v)
@@ -87,7 +91,7 @@ define(['kb'],function(kb){
 
       matched.filter(function(k,i){
         /* filter out default elements and duplicates as well as components that are already registered */
-        return ((document.createElement(k) instanceof HTMLUnknownElement) && (matched.indexOf(k,(i+1)) === -1) && _templates[k] === undefined);
+        return (k.indexOf(_start) !== 0 && (document.createElement(k) instanceof HTMLUnknownElement) && (matched.indexOf(k,(i+1)) === -1) && _templates[k] === undefined);
       });
 
       /* if there are unregistered components run global event for registration */
@@ -184,7 +188,6 @@ define(['kb'],function(kb){
 
     /* REGEX Map Splitters */
 
-
     /* Returns a regex that matches against map bindings based on start and end chars */
     function getMatch()
     {
@@ -195,6 +198,11 @@ define(['kb'],function(kb){
     function getForMatch()
     {
       return new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(for)(.*?)(loop)(.*?)(\\'+_end.split('').join('\\')+')','g');
+    }
+    
+    function getNodeMatch()
+    {
+      return new RegExp('(<\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>)(.|[\S\s]*?)(<\\/\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>)|(<{{.*?}}.*?>)','g');
     }
 
     /* returns an array of standard text and bindings, binding texts are later converted to bind objects
@@ -447,6 +455,10 @@ define(['kb'],function(kb){
               binds = loopMap(childNodes[x].childNodes,binds);
             }
           }
+          else if(childNodes[x].nodeType === 8)
+          {
+            getNodeBinds(childNodes[x],binds);
+          }
         }
         return binds;
       }
@@ -551,14 +563,58 @@ define(['kb'],function(kb){
         }
       }
     }
+    
+    function getNodeBinds(node,binds)
+    {
+      /* the actual text */
+      var text = node.textContent;
+      
+      if(text.match(getNodeMatch()))
+      {
+        var bindText = splitText(text),
+            binder = CreateBind();
+        
+        binder.prototype.type = 'node';
+        binder.prototype.text = text;
+        binder.prototype.bindText = bindText;
+        binder.prototype.base = bindText[1];
+        binder.prototype.listener = 'textContent';
+        binder.prototype.attr = 'textContent';
+        binder.prototype.localAttr = 'textContent';
+        binder.prototype.local = node;
+        binder.prototype.node = node.parentElement;
+        binder.prototype.binds = binds;
+        binder.prototype.replacement = undefined;
+        
+        for(var x=0,len=bindText.length;x<len;x++)
+        {
+          if(bindText[x].indexOf(_start) === 0)
+          {
+            var key = splitKey(bindText[x]),
+                bind = new binder(bindText[x],key);
+            
+            /* create new bind object and attach to the binds list for returning */
+              if(binds[key] === undefined) binds[key] = [];
 
+              bind.bindText[x] = bind;
+              bind.bindMaps.push(bind);
+              bind.id = binds[key].length;
+              if(x === 1)
+              {
+                binder.prototype.base = bind;
+                bind.isBase = true;
+              }
+              binds[key].push(bind);
+          }
+        }
+      }
+    }
 
     Object.defineProperties(KonnektMP.prototype,{
       register:setDescriptor(KonnektMP.register),
       isRegistered:setDescriptor(KonnektMP.isRegistered),
       getUnknown:setDescriptor(KonnektMP.getUnknown),
-      map:setDescriptor(map),
-      insert:setDescriptor(KonnektMP.insert)
+      map:setDescriptor(map)
     });
 
     /* Bind object and methods */
@@ -579,6 +635,7 @@ define(['kb'],function(kb){
         this.subType = parsedKey.subtype;
         this.set = parsedKey.set;
         this.inlineFilters = parsedKey.filters;
+        this.isBase = false;
       }
       
       function reconnect()
@@ -610,14 +667,17 @@ define(['kb'],function(kb){
         }
         else
         {
-           this._data.getLayer(this.key)
-          .removeDataUpdateListener(this.localKey,this.dataListener)
-          .addDataUpdateListener(this.localKey,this.dataListener);
-          
-          if(this.bindText.length === 1)
+          if(this.dataListener)
           {
-            this.node.removeAttrUpdateListener(this.listener,this.domListener)
-            .addAttrUpdateListener(this.listener,this.domListener);
+              this._data.getLayer(this.key)
+              .removeDataUpdateListener(this.localKey,this.dataListener)
+              .addDataUpdateListener(this.localKey,this.dataListener);
+
+              if(this.bindText.length === 1)
+              {
+                this.node.removeAttrUpdateListener(this.listener,this.domListener)
+                .addAttrUpdateListener(this.listener,this.domListener);
+              }
           }
         }
       }
@@ -629,6 +689,29 @@ define(['kb'],function(kb){
         this._data = data;
         if(this.type !== 'for')
         {
+          if(this.type === 'node')
+          {
+            if(this.isBase)
+            {
+              this.dataListener = function(e)
+              {
+                if(e.event === 'delete')
+                {
+                  self.unsync();
+                }
+                else
+                {
+                  self.replaceNode();
+                }
+              }
+              
+              data.getLayer(this.key)
+              .addDataUpdateListener(this.localKey,this.dataListener);
+              return this;
+            }
+            return this;
+          }
+          
           if(this.insert)
           {
             this.setDom(this._data.get(this.key));
@@ -873,6 +956,41 @@ define(['kb'],function(kb){
         }
         return this;
       }
+      
+      function replaceNode()
+      {
+        var frag = document.createDocumentFragment(),
+            tempDiv = frag.appendChild(document.createElement('div')),
+            localComponent,
+            foundEmpty = false,
+            self = this;
+        tempDiv.innerHTML = this.bindText.map(function(bind,x){
+          if(typeof bind === 'object')
+          {
+            if(bind._data === undefined) 
+            {
+              foundEmpty = true;
+              return '';
+            }
+            if(bind.key === self.bindText[1].key)
+            {
+              var val = runThroughFilters(bind._data.get(bind.key),bind.filters,bind._data.filters) || 'unknown';
+              if(val === 'unkown' && x === 1) console.error('You attempted to bind a node to %o, which does not exist on %o, with bindText: %o',bind.key,bind._data,bind.base);
+              return val;
+            }
+            return runThroughFilters(bind._data.get(bind.key),bind.filters,bind._data.filters);
+          }
+          return bind;
+        }).join('');
+        if(!foundEmpty)
+        {
+          localComponent = tempDiv.children[0];
+          frag.replaceChild(localComponent,tempDiv);
+          this.base.local.parentElement.stopChange().replaceChild(frag,this.base.local);
+          this.base.local = localComponent;
+          _onEvent({event:'replaceNode',node:this.base.local,parent:this.node,map:this.base});
+        }
+      }
 
       function setLoop(index,event)
       {
@@ -951,7 +1069,7 @@ define(['kb'],function(kb){
         {
           this.node.stopChange().insertBefore(newNode,this.node.children[index]);
         }
-        _onEvent({event:'loopitem',node:newNode,parent:this.node});
+        _onEvent({event:'loopitem',node:newNode,parent:this.node,map:this});
         return this;
       }
 
@@ -992,7 +1110,7 @@ define(['kb'],function(kb){
 
         this.bindMaps = null;
         delete this.bindMaps;
-
+        
         this.binds = null;
         delete this.binds;
         return this;
@@ -1010,7 +1128,8 @@ define(['kb'],function(kb){
         setLoop:setDescriptor(setLoop),
         bindMaps:setDescriptor([]),
         unsync:setDescriptor(unsync),
-        reset:setDescriptor(reset)
+        reset:setDescriptor(reset),
+        replaceNode:setDescriptor(replaceNode)
       })
 
       return bind;
