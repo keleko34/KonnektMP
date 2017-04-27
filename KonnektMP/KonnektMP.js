@@ -703,6 +703,8 @@ define(['kb'],function(kb){
               self.setData(e.value);
             }
             
+            this.node.__kbhtmllistener = true;
+            
             this.node.addAttrUpdateListener(this.listener,this.domListener);
           }
         }
