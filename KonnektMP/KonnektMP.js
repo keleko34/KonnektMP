@@ -216,7 +216,7 @@ define(['kb'],function(kb){
       {
         if(split[x].match(reg))
         {
-          key = splitKey(split[x]).replace(/[<>]/g,'');
+          key = splitKey(split[x].substring(split[x].indexOf('<'),split[x].indexOf('}}'))+"}").replace(/[<>]/g,'');
           if(key.indexOf('/') === 0 && splitdexes[key.replace('/','')])
           {
             key = key.replace('/','');
