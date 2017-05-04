@@ -15,7 +15,7 @@ define(['kb'],function(kb){
         _kb = kb().call(),
 
         /* All dom based events such as onclick */
-        _domevents = Object.keys(HTMLElement.prototype).filter(function(v){return v.indexOf('on') === 0}),
+        _domevents = Object.keys(HTMLElement.prototype).filter(function(v){return v.indexOf('on') === 0}).concat(['ontouchstart','ontouchend','ontouchmove']),
         
         _events = {
           loopitem:[],
@@ -470,6 +470,15 @@ define(['kb'],function(kb){
       return data;
     }
     
+    function runThroughComponentFilters(value,filters,filterFunc)
+    {
+      for(var x=0,len=filters.length;x<len;x++)
+      {
+        if(filterFuncs[filters[x]]) value = filterFuncs[filters[x]](data,index);
+      }
+      return value;
+    }
+    
     /* Prototyped Methods */
 
     /* need better methods to approach adding and swapping filters for bindings */
@@ -736,6 +745,12 @@ define(['kb'],function(kb){
         var self = this;
 
         this._data = data;
+        if(this.type === 'component')
+        {
+          if(!this.node.k_post) this.node.k_post = {};
+          this.node.k_post[this.attr] = runThroughComponentFilters(this._data.get(this.key),this.filters,this._data.filters);
+          return this;
+        }
         if(this.type !== 'for')
         {
           if(this.type === 'node')
@@ -873,6 +888,8 @@ define(['kb'],function(kb){
           /* then update dom */
           if(this.isEvent)
           {
+            /* need to updae this to use addEventListener */
+            
             this.node.stopChange()[this.attr] = this._data.get(this.key);
           }
           else if(this.key === 'innerHTML')
