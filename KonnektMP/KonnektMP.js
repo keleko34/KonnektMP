@@ -939,7 +939,7 @@ define(['kb'],function(kb){
             }
             
             /* need to updae this to use addEventListener */
-            this._data.addDataListener(this.key,this.dataListener);
+            this._data.addDataUpdateListener(this.key,this.dataListener);
             
             this.node.stopChange().addEventListener(this.attr.replace('on',''),this._data.get(this.key));
           }
