@@ -932,14 +932,14 @@ define(['kb'],function(kb){
           /* then update dom */
           if(this.isEvent)
           {
-            this.eventChange = function(e)
+            this.dataListener = function(e)
             {
               self.node.stopChange().removeEventListener(self.attr.replace('on',''),e.oldValue);
               self.node.stopChange().addEventListener(self.attr.replace('on',''),e.value);
             }
             
             /* need to updae this to use addEventListener */
-            this._data.addDataListener(this.key,this.eventChange);
+            this._data.addDataListener(this.key,this.dataListener);
             
             this.node.stopChange().addEventListener(this.attr.replace('on',''),this._data.get(this.key));
           }
