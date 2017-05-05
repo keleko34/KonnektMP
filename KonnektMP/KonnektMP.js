@@ -745,35 +745,27 @@ define(['kb'],function(kb){
         var self = this;
 
         this._data = data;
-        if(this.type === 'component')
-        {
-          if(!this.node.k_post) this.node.k_post = {};
-          this.node.k_post[this.attr] = runThroughComponentFilters(this._data.get(this.key),this.filters,this._data.filters);
-          return this;
-        }
         if(this.type !== 'for')
         {
-          if(this.type === 'node')
+          /* pass filters associated with pointer */
+          if(this._data.pointers[this.key] !== undefined && this._data.pointers[this.key].filters !== undefined)
           {
-            if(this.isBase)
+            var dtfilters = this._data.pointers[this.key].filters.dataFilters;
+            for(var x=0,keys=Object.keys(this._data.pointers[this.key].filters.stringFilters),len=keys.length;x<len;x++)
             {
-              this.dataListener = function(e)
+              var filters = this._data.pointers[this.key].filters.stringFilters[keys[x]];
+              for(var i=0,lenn=filters.length;i<lenn;i++)
               {
-                if(e.event === 'delete')
+                if(this.filters[keys[x]].indexOf(filters[i]) === -1)
                 {
-                  self.unsync();
-                }
-                else
-                {
-                  self.replaceNode();
+                  this.filters[keys[x]].push(filters[i]);
+                  if(['vmfilters','filters'].indexOf(keys[x]) !== -1 && dtfilters[filters[i]] !== undefined && this._data.filters[filters[i]] === undefined)
+                  {
+                    this._data.filters[filters[i]] = dtfilters[filters[i]];
+                  }
                 }
               }
-              
-              data.getLayer(this.key)
-              .addDataUpdateListener(this.localKey,this.dataListener);
-              return this;
             }
-            return this;
           }
           
           if(this.insert)
@@ -829,6 +821,58 @@ define(['kb'],function(kb){
             }
           }
           
+          if(this.type === 'component')
+          {
+            /* first check storage to data */
+            if(!!this.filters.model && this.filters.model.length !== 0)
+            {
+              this._data.stopChange().set(this.key,getModel(this.filters.model));
+            }
+            else if(!!this.filters.session && this.filters.session.length !== 0)
+            {
+              this._data.stopChange().set(this.key,getSession(this.filters.session));
+            }
+            else if(!!this.filters.local && this.filters.local.length !== 0)
+            {
+              this._data.stopChange().set(this.key,getLocal(this.filters.local));
+            }
+            
+            if(!this.node.k_post) this.node.k_post = {};
+            this.node.k_post[this.attr] = {
+              filters:{
+                dataFilters:this._data.filters,
+                stringFilters:this.filters
+              },
+              pointer:this._data.getLayer(this.key),
+              key:this.key.split('.').pop()
+            };
+            return this;
+          }
+          
+          
+          if(this.type === 'node')
+          {
+            if(this.isBase)
+            {
+              this.dataListener = function(e)
+              {
+                if(e.event === 'delete')
+                {
+                  self.unsync();
+                }
+                else
+                {
+                  self.replaceNode();
+                }
+              }
+              
+              data.getLayer(this.key)
+              .addDataUpdateListener(this.localKey,this.dataListener);
+              return this;
+            }
+            return this;
+          }
+          
           this.dataListener = function(e){
             if(e.event === 'delete')
             {
@@ -840,10 +884,10 @@ define(['kb'],function(kb){
             }
           }
 
-          data.getLayer(this.key)
+          if(!this.isEvent) data.getLayer(this.key)
           .addDataUpdateListener(this.localKey,this.dataListener);
           
-          if(this.bindText.length === 1)
+          if(this.bindText.length === 1 && !this.isEvent)
           {
             this.domListener = function(e)
             {
@@ -870,7 +914,7 @@ define(['kb'],function(kb){
         }
         
         if(this.type !== 'for')
-        {
+        { 
           /* first check storage to data */
           if(!!this.filters.model && this.filters.model.length !== 0)
           {
@@ -888,9 +932,16 @@ define(['kb'],function(kb){
           /* then update dom */
           if(this.isEvent)
           {
-            /* need to updae this to use addEventListener */
+            this.eventChange = function(e)
+            {
+              self.node.stopChange().removeEventListener(self.attr.replace('on',''),e.oldValue);
+              self.node.stopChange().addEventListener(self.attr.replace('on',''),e.value);
+            }
             
-            this.node.stopChange()[this.attr] = this._data.get(this.key);
+            /* need to updae this to use addEventListener */
+            this._data.addDataListener(this.key,this.eventChange);
+            
+            this.node.stopChange().addEventListener(this.attr.replace('on',''),this._data.get(this.key));
           }
           else if(this.key === 'innerHTML')
           {
