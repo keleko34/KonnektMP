@@ -941,7 +941,7 @@ define(['kb'],function(kb){
             /* need to updae this to use addEventListener */
             this._data.addDataUpdateListener(this.key,this.dataListener);
             
-            this.node.stopChange().addEventListener(this.attr.replace('on',''),this._data.get(this.key));
+            this.node.addEventListener(this.attr.replace('on',''),this._data.get(this.key));
           }
           else if(this.key === 'innerHTML')
           {
