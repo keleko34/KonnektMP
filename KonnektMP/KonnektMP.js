@@ -538,7 +538,7 @@ define(['kb'],function(kb){
         binder.prototype.type = (text.match(getForMatch()) ? 'for' : 'text');
         binder.prototype.text = text;
         binder.prototype.bindText = bindText;
-        binder.prototype.listener = 'textContent';
+        binder.prototype.listener = ['textContent','innerHTML','innerText'];
         binder.prototype.attr = 'textContent';
         binder.prototype.localAttr = 'textContent';
         binder.prototype.local = node;
@@ -703,7 +703,17 @@ define(['kb'],function(kb){
           this._data.getLayer(this.key).removeDataUpdateListener(this.localKey,this.dataListener);
           if(this.bindText.length === 1)
           {
-            this.node.removeAttrUpdateListener(this.listener,this.domListener);
+            if(typeof this.listener === 'object')
+            {
+              for(var x=0,len=this.listener.length;x<len;x++)
+              {
+                this.node.removeAttrUpdateListener(this.listener[x],this.domListener);
+              }
+            }
+            else
+            {
+              this.node.removeAttrUpdateListener(this.listener,this.domListener);
+            }
           }
         }
         else
@@ -896,7 +906,17 @@ define(['kb'],function(kb){
             
             this.node.__kbhtmllistener = true;
             
-            this.node.addAttrUpdateListener(this.listener,this.domListener);
+            if(typeof this.listener === 'object')
+            {
+              for(var x=0,len=this.listener.length;x<len;x++)
+              {
+                this.node.addAttrUpdateListener(this.listener[x],this.domListener);
+              }
+            }
+            else
+            {
+              this.node.addAttrUpdateListener(this.listener,this.domListener);
+            }
           }
         }
         else
