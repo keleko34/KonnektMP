@@ -1,4 +1,4 @@
-define(['kb'],function(kb){
+define(['KB'],function(kb){
   function CreateKonnektMP()
   {
     var _start = "{{",
