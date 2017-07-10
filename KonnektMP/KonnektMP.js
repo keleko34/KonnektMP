@@ -684,13 +684,14 @@ define(['kb'],function(kb){
         var parsedKey = parseKey(key);
         
         this.text = text;
-        this.key = key.replace(/(^>|^<*)(.*?)([=*+-\/<>]+)((.*?)+)/g,'$2').replace(/\s/g,'');
+        this.key = key.replace(/(^>|^<*)(.*?)([=*+-\/<>]+)((.*?)+)/g,(parsedKey.filters ? '$2' : '$4')).replace(/\s/g,'');
         this.keyLength = this.key.split('.').length;
         this.localKey = this.key.split('.').pop();
         this.filters = sortFilters(splitFilters(text));
         this.component = (this.type === 'for' ? splitFor(text)[1] : undefined);
         this.id = 0;
-        this.subType = parsedKey.subtype;
+        this.insert = (parsedKey.type === 'insert');
+        this.outsert = (parsedKey.type === 'outsert');
         this.set = parsedKey.set;
         this.inlineFilters = parsedKey.filters;
         this.isBase = false;
@@ -1054,7 +1055,6 @@ define(['kb'],function(kb){
         value = runThroughFilters(value,this.filters.vmFilters,this._data.filters);
         
         this._data.stopChange().set(this.key,value);
-        
         setModel(this.filters.model,value);
         setSession(this.filters.session,value);
         setLocal(this.filters.local,value);
@@ -1240,7 +1240,8 @@ define(['kb'],function(kb){
 
       function unsync()
       {
-        this.__proto__.bindText = null;
+        if(this.type === 'component') this.__proto__.bindText = null;
+        this.bindText = null;
 
         this._data = null;
         delete this._data;
