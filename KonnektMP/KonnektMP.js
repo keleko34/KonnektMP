@@ -53,9 +53,9 @@ define(['KB'],function(kb){
       /* set wrapper html and define class */
       this.wrapper.className = "Wrapper Wrapper__"+this.name;
       
-      if(this.template.match(getNodeMatch()))
+      if(this.template.match(getNodeMatch()) || this.template.match(getAttributeNameMatch()))
       {
-        this.template = getEnclosedNodes(this.template);
+        this.template = getEnclosedAttributeNames(getEnclosedNodes(this.template));
       }
     }
 
@@ -202,9 +202,19 @@ define(['KB'],function(kb){
       return new RegExp('(\\'+_start.split('').join('\\')+')(.*?)(for)(.*?)(loop)(.*?)(\\'+_end.split('').join('\\')+')','g');
     }
     
+    function splitElReg()
+    {
+      return new RegExp('(<.*?.*?>|<\/.*?>)','g');
+    }
+    
     function getNodeMatch()
     {
-      return new RegExp('(<\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>|'+'<\\/\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'>)');
+      return new RegExp('(<\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'.*?>|'+'<\\/\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'>)','g');
+    }
+    
+    function getAttributeNameMatch()
+    {
+      return new RegExp('([^<\\/>\\\'\\\"]\\'+_start.split('').join('\\')+'.*?\\'+_end.split('').join('\\')+'=[\\\'\\\"].*?[\\\'\\\"])','g');
     }
     
     function getEnclosedNodes(html)
@@ -248,6 +258,26 @@ define(['KB'],function(kb){
         for(var i=0,keysI=Object.keys(splitdexes[keys[x]],'array'),lenn=keysI.length;x<len;x++)
         {
           split[keysI[i]] = '<!--'+split[keysI[i]]+'-->';
+        }
+      }
+      
+      return split.join('');
+    }
+    
+    function getEnclosedAttributeNames(html)
+    {
+      var reg = splitElReg(),
+          regName = getAttributeNameMatch(),
+          split = html.split(reg).filter(Boolean);
+      
+      for(var x=0,len=split.length;x<len;x++)
+      {
+        if(split[x].match(regName))
+        {
+          var splitNames = split[x].split(regName)
+          .filter(function(v){return v.match(regName);})
+          .join(" & ");
+          split[x] = split[x].replace(regName,'').replace('>',' data-kbattr=\''+splitNames+'\' >');
         }
       }
       
@@ -505,6 +535,7 @@ define(['KB'],function(kb){
             else
             {
               getAttrBinds(childNodes[x],binds);
+              getAttributeNameBinds(childNodes[x],binds);
             }
 
             /* if this childnode has other children nodes then we run recursive */
@@ -517,6 +548,7 @@ define(['KB'],function(kb){
           {
             getNodeBinds(childNodes[x],binds);
           }
+          /* need to take care of dynamic attr name binds here for both dynamic nodes and normal ones */
         }
         return binds;
       }
@@ -665,6 +697,17 @@ define(['KB'],function(kb){
               binds[key].push(bind);
           }
         }
+      }
+    }
+    
+    function getAttributeNameBinds(node,binds)
+    {
+      /* the actual text, what to do if value is also a bind? */
+      var text = node.textContent,
+          attrs = node.getAttribute('data-kbattr').split('&');
+      for(var x =0,len=attrs.length;x<len;x++)
+      {
+        
       }
     }
 
