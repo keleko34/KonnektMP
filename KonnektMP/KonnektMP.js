@@ -277,7 +277,7 @@ define(['KB'],function(kb){
           var splitNames = split[x].split(regName)
           .filter(function(v){return v.match(regName);})
           .join(" & ");
-          split[x] = split[x].replace(regName,'').replace('>',' data-kbattr=\''+splitNames+'\' >');
+          split[x] = split[x].replace(regName,'').replace('>',' data-kbattr=\''+splitNames.replace(/['"]/g, '\\"')+'\' >');
         }
       }
       
@@ -534,8 +534,8 @@ define(['KB'],function(kb){
             /* if it isnt then only check attributes for binds */
             else
             {
+              if(childNodes[x].getAttribute('data-kbattr')) getAttributeNameBinds(childNodes[x],binds);
               getAttrBinds(childNodes[x],binds);
-              getAttributeNameBinds(childNodes[x],binds);
             }
 
             /* if this childnode has other children nodes then we run recursive */
@@ -612,7 +612,7 @@ define(['KB'],function(kb){
         {
           /*specifies bind type: component|attribute */
           var bindText = splitText(attrs[i].value),
-              binder = CreateBind()
+              binder = CreateBind();
 
           binder.prototype.type = (isUnknown ? 'component' : 'attribute');
           binder.prototype.text = attrs[i].value;
@@ -707,8 +707,40 @@ define(['KB'],function(kb){
           attrs = node.getAttribute('data-kbattr').split('&');
       for(var x =0,len=attrs.length;x<len;x++)
       {
+        var bindText = splitText(attrs[x].substring(0,attrs[x].indexOf('='))),
+            binder = CreateBind();
         
+        binder.prototype.type = 'attr-name';
+        binder.prototype.text = attrs[x];
+        binder.prototype.bindText = bindText;
+        binder.prototype.base = bindText[1];
+        binder.prototype.listener = ['setAttribute','removeAtribute'];
+        binder.prototype.attr = undefined;
+        binder.prototype.localAttr = undefined;
+        binder.prototype.local = node;
+        binder.prototype.node = node.parentElement;
+        binder.prototype.binds = binds;
+        binder.prototype.replacement = undefined;
+        binder.prototype.attributeValue = attrs[x].substring((attrs[x].indexOf('="')+2),(attrs[x].length-1));
+        
+        for(var x=0,len=bindText.length;x<len;x++)
+        {
+          if(bindText[x].indexOf(_start) === 0)
+          {
+            var key = splitKey(bindText[x]),
+                bind = new binder(bindText[x],key);
+
+              /* create new bind object and attach to the binds list for returning */
+              if(binds[key] === undefined) binds[key] = [];
+
+              bind.bindText[x] = bind;
+              bind.bindMaps.push(bind);
+              bind.id = binds[key].length;
+              binds[key].push(bind);
+          }
+        }
       }
+      node.removeAttribute('data-kbattr');
     }
 
     Object.defineProperties(KonnektMP.prototype,{
@@ -738,6 +770,53 @@ define(['KB'],function(kb){
         this.set = parsedKey.set;
         this.inlineFilters = parsedKey.filters;
         this.isBase = false;
+      }
+      
+      function switchBinds(oldValue,value,skipAttr)
+      {
+        var maps = this.node.kb_mapper.kb_maps,
+            arrMaps = Object.keys(maps).reduce(function(arr,v){
+              arr.concat(maps[v]);
+              return arr;
+            },[]),
+            currentValue = this.node.getAttribute(oldValue);
+        
+        for(var x=0,len=arrMaps;x<len;x++)
+        {
+          if(arrMaps[x].attr === oldValue)
+          {
+            arrMaps[x].attr = value;
+            arrMaps[x].listener = value;
+            if(arrMaps[x].domListener)
+            {
+              this.node.removeAttrUpdateListener(oldValue,arrMaps[x].domListener);
+              this.node.addAttrUpdateListener(value,arrMaps[x].domListener);
+            }
+          }
+        }
+        
+        if(!skipAttr)
+        {
+          this.node.stopChange().removeAttribute(oldValue);
+          this.node.stopChange().setAttribute(value,currentValue);
+        }
+      }
+      
+      function unsyncAttr()
+      {
+        var maps = this.node.kb_mapper.kb_maps,
+            arrMaps = Object.keys(maps).reduce(function(arr,v){
+              arr.concat(maps[v]);
+              return arr;
+            },[]);
+        
+        for(var x=0,len=arrMaps;x<len;x++)
+        {
+          if(arrMaps[x].attr === this.value)
+          {
+            arrMaps[x].unsync();
+          }
+        }
       }
       
       function reconnect()
@@ -903,7 +982,6 @@ define(['KB'],function(kb){
             return this;
           }
           
-          
           if(this.type === 'node')
           {
             if(this.isBase)
@@ -924,6 +1002,48 @@ define(['KB'],function(kb){
               .addDataUpdateListener(this.localKey,this.dataListener);
               return this;
             }
+            return this;
+          }
+          
+          if(this.type === 'attr-name')
+          {
+            this.dataListener = function(e){
+              if(e.event === 'delete')
+              {
+                self.unsyncAttr();
+              }
+              else
+              {
+                self.switchBinds(e.oldValue,e.value);
+              }
+            }
+            
+            data.getLayer(this.key)
+            .addDataUpdateListener(this.localKey,this.dataListener);
+            
+            this.domListener = function(e)
+            {
+              if(e.attr === 'setAttribute')
+              {
+                if(e.oldValue === self.value)
+                {
+                  self.switchBinds(e.oldValue,e.value,true);
+                  self.setData(e.value);
+                }
+              }
+              else
+              {
+                self.unsyncAttr();
+              }
+            }
+            
+            for(var x=0,len=this.listener.length;x<len;x++)
+            {
+              this.node.addAttrUpdateListener(this.listener[x],this.domListener);
+            }
+            
+            this.node.stopChange().setAttribute(data.get(this.key),this.attributeValue);
+            
             return this;
           }
           
