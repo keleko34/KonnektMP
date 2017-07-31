@@ -1,5 +1,5 @@
-define([],function(){
-  function CreateMap()
+define(['./Sub/Map/Map'],function(CreateMap){
+  function CreateKonnektMP()
   {
     /* The start and end characters to search for when looking for binds */
     var _start = "{{",
@@ -94,10 +94,10 @@ define([],function(){
         /* determines if bind is a single value set */
         _reOutsert = /^(\s*)(<)/;
     
-    function Map(node)
+    function KonnektMP(node)
     {
       
-      return Map;
+      return KonnektMP;
     }
     
     function replaceNonCompats(template)
@@ -135,42 +135,40 @@ define([],function(){
       return splitNodes.join('');
     }
     
+    function loopMap(childNodes,binds)
+    {
+      
+    }
+    
     /* SECTION Public Methods */
-    Map.registerTemplate = function(name,template)
+    KonnektMP.registerTemplate = function(name,template)
     {
       if(arguments.length === 0) return _templates;
       if(typeof _templates[name] === 'undefined')
       {
         _templates[name] = replaceNonCompats(template);
       }
-      return Map;
+      return KonnektMP;
     }
     
-    Map.engine = function(engine)
+    /* The engine should allow for listening data */
+    KonnektMP.engine = function(engine)
     {
       if(typeof engine === 'undefined') return _engine;
       _engine = (typeof engine === 'function' ? engine : _engine);
-      return Map;
-    }
-    
-    Map.templates = function(templates)
-    {
-      if(typeof templates === 'undefined') return _templates;
-      _templates = (typeof templates === 'object' && templates.length ? templates : _templates);
-      return Map;
+      return KonnektMP;
     }
     /* END SECTION Public Methods */
     
     
     /* takes a template and parses the nodes for unknown components */
-    Map.getSubComponents = function(template)
+    KonnektMP.getSubComponents = function(template)
     {
       return template.match(_reNodes)
       .filter(function(v,i,arr){
         return ((v.indexOf(_start) !== 0) && (document.createElement(v) instanceof HTMLUnknownElement) && (arr.indexOf(v,(i+1)) === -1) && _templates.indexOf(v) === -1);
       });
     }
-    
   }
-  return CreateMap
+  return CreateKonnektMP;
 })
