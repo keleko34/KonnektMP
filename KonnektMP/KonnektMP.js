@@ -139,7 +139,7 @@ define([],function(){
     Map.registerTemplate = function(name,template)
     {
       if(arguments.length === 0) return _templates;
-      if(_templates[name] === undefined)
+      if(typeof _templates[name] === 'undefined')
       {
         _templates[name] = replaceNonCompats(template);
       }
