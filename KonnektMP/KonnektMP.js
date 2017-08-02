@@ -231,7 +231,7 @@ define(['./Sub/Map/Map'],function(CreateMap){
                   CreateMap()
                   .element(node)
                   .maps(maps)
-                  .type((KonnektMP.isComponent(node.nodeName) ? 'component' : (_events.indexOf(attr.name) !== -1 ? 'event' : 'attribute')))
+                  .type((KonnektMP.isComponent(node.nodeName) ? 'component_attr' : (_events.indexOf(attr.name) !== -1 ? 'event' : 'attribute')))
                   .attr(attr)
                   .text(attr.value)
                   .call(maps);

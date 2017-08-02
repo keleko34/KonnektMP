@@ -44,7 +44,11 @@ define(['./../Binding/Binding'],function(CreateBinding){
           .addProto('type',_type)
           .call(this);
         break;
-        case 'component':
+        case 'component_attr':
+          CreateBinding()
+          
+        break;
+        case 'component__attrname':
           
         break;
         case 'event':
