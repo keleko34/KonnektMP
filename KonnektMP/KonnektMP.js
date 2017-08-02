@@ -8,11 +8,8 @@ define(['./Sub/Map/Map'],function(CreateMap){
     /* The seperation character when looking for bind params and options */    
         _pipe = "|",
         
-    /* The text for the component */
-        _template = "",
-        
     /* A list of all dom events that can be attached to an element such as `onclick` */
-        _events = [],
+        _events = Object.keys(HTMLElement.prototype).filter(function(v){return v.indexOf('on') === 0}).concat(['ontouchstart','ontouchend','ontouchmove']),
     
     /* This is the property event based engine to listen for changes */
         _engine = function(){},
@@ -48,6 +45,8 @@ define(['./Sub/Map/Map'],function(CreateMap){
         
         /* for splitting nodes to show bindable nodes */
         _reNodeBind = /(?=<{{.*?}}.*?>|<\/{{.*?}}>)/g,
+        
+        _reNodeNameBind = /(<{{.*?}}.*?>|<\/{{.*?}}>)/g,
         
         _reNodeStart = /(<{{.*?}}.*?>)/g,
         
@@ -96,14 +95,45 @@ define(['./Sub/Map/Map'],function(CreateMap){
     
     function KonnektMP(node)
     {
+      /* Name of the component */
+      this.name = node.tagName.toLowerCase();
       
-      return KonnektMP;
+      /* template of the component */
+      this.template = _templates[this.name] || '<div class="missing_component">Unknown Component</div>';
+      
+      /* original node */
+      this.node = node;
+      
+      /* document fragment to prevent reflow for faster browser rendering */
+      this.fragment = document.createDocumentFragment();
+      
+      /* wrapper div for placing components inside */
+      this.wrapper = this.fragment.appendChild(document.createElement('div'));
+      
+      /* set wrapper html and define class */
+      this.wrapper.className = "Wrapper Wrapper__"+this.name;
+      
+      this.wrapper.innerHTML = this.template;
+      
+      if(node.parentElement.stopChange)
+      {
+        node.parentElement.stopChange().replaceChild(this.fragment,this.node);
+      }
+      else
+      {
+        node.parentElement.replaceChild(this.fragment,this.node);
+      }
+      
+      this.maps = loopMap(this.wrapper.childNodes,this.maps);
     }
     
     function replaceNonCompats(template)
     {
+      if(!template.match(_reAttrNameBind) && !template.match(_reNodeStart)) return template;
+      
       var splitNodes = template.split(_reSplitNodes),
-          nodeMem = {};
+          nodeMem = {},
+          keys = {};
       
       for(var x=0,len=splitNodes.length,key,attr,node;x<len;x++)
       {
@@ -112,7 +142,15 @@ define(['./Sub/Map/Map'],function(CreateMap){
         node = splitNodes[x].match(_reNodeStart);
         if(attr || node)
         {
-          splitNodes[x] = "<!--"+splitNodes[x]+"-->";
+          if(!keys[key]) 
+          {
+            keys[key] = 0;
+          }
+          else
+          {
+            keys[key]++;
+          }
+          splitNodes[x] = '<script class="'+key+'_'+keys[key]+'" type="text/placeholder">'+splitNodes[x]+'</script>';
           if(!splitNodes[x].match(_reOneLineTag))
           {
             nodeMem[key] = 1;
@@ -129,15 +167,82 @@ define(['./Sub/Map/Map'],function(CreateMap){
         else if(nodeMem[key] && splitNodes[x].match(_reEndTag))
         {
           nodeMem[key] -= 1;
-          if(nodeMem[key] === 0) splitNodes[x] = '<!--'+splitNodes[x]+'-->';
+          if(nodeMem[key] === 0) splitNodes[x] = '<script class="'+key+'_'+keys[key]+'" type="text/placeholder">'+splitNodes[x]+'</script>';
         }
       }
       return splitNodes.join('');
     }
     
-    function loopMap(childNodes,binds)
+    function loopMap(childNodes,maps)
     {
+      for(var x=0,len=childNodes.length,node;x<len;x++)
+      {
+        node = childNodes[x];
+        /* checks: 
+        
+        1. script placeholder > node bind, attr name bind, attr value bind *note scripts are switched out after data is tied
+        2. attributes
+        3. textContent
+        
+        if any checks pass, then pass to mapping library */
       
+        switch(node.nodeType)
+        {
+          case 3:
+            if(node.textContent.match(_reBind))
+            {
+                CreateMap()
+                .element(node)
+                .maps(maps)
+                .type((node.parentElement.nodeName === 'STYLE' ? 'style' : 'text'))
+                .text(node.textContent)
+                .call(maps);
+            }
+          break;
+          case 1: 
+            if(node.nodeName === 'SCRIPT' && node.type === 'text/placeholder')
+            {
+              /* gets all sub elemenet children to attach to itself */
+              function getNextSibling(nextNode,childNodes)
+              {
+                if(nextNode.className !== node.className)
+                {
+                  childNodes.push(nextNode);
+                  return getNextSibling(nextNode.nextSibling,childNodes);
+                }
+                return childNodes;
+              }
+              
+              CreateMap()
+              .element(node)
+              .children((node.textContent.match(_reNodeStart) && !node.textContent.match(_reNodeEnd) ? getNextSibling(node.nextSibling,[]) : []))
+              .maps(maps)
+              .type('placeholder')
+              .text(node.textContent)
+              .call(maps);
+            }
+            else
+            {
+              for(var i=0,lenn=node.attributes.length,attr;i<lenn;i++)
+              {
+                attr = node.attributes[i];
+                if(attr.value.match(_reBind))
+                {
+                  CreateMap()
+                  .element(node)
+                  .maps(maps)
+                  .type((KonnektMP.isComponent(node.nodeName) ? 'component' : (_events.indexOf(attr.name) !== -1 ? 'event' : 'attribute')))
+                  .attr(attr)
+                  .text(attr.value)
+                  .call(maps);
+                }
+              }
+              if(node.childNodes.length !== 0) loopMap(node.childNodes,maps);
+            }
+          break;
+        }
+      }
+      return maps;
     }
     
     /* SECTION Public Methods */
@@ -151,6 +256,16 @@ define(['./Sub/Map/Map'],function(CreateMap){
       return KonnektMP;
     }
     
+    KonnektMP.isRegistered = function(name)
+    {
+      return (_templates[name] !== undefined);
+    }
+    
+    KonnektMP.isComponent = function(v)
+    {
+      return (document.createElement(v) instanceof HTMLUnknownElement);
+    }
+    
     /* The engine should allow for listening data */
     KonnektMP.engine = function(engine)
     {
@@ -158,8 +273,6 @@ define(['./Sub/Map/Map'],function(CreateMap){
       _engine = (typeof engine === 'function' ? engine : _engine);
       return KonnektMP;
     }
-    /* END SECTION Public Methods */
-    
     
     /* takes a template and parses the nodes for unknown components */
     KonnektMP.getSubComponents = function(template)
@@ -169,6 +282,8 @@ define(['./Sub/Map/Map'],function(CreateMap){
         return ((v.indexOf(_start) !== 0) && (document.createElement(v) instanceof HTMLUnknownElement) && (arr.indexOf(v,(i+1)) === -1) && _templates.indexOf(v) === -1);
       });
     }
+    /* END SECTION Public Methods */
+    
   }
   return CreateKonnektMP;
 })
