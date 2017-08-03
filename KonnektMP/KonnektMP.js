@@ -17,6 +17,12 @@ define(['./Sub/Map/Map'],function(CreateMap){
     /* A list of all templates currently stored to allow quicker parsing  */
         _templates = [],
     
+    /* shows a total number of times a component was built */
+        _built = {},
+        
+    /* Firefox currently has issues with css selectorText setting so must be backported to standard text bind */
+        _isFirefox = (window.netscape || navigator.userAgent.toLowerCase().indexOf('firefox') > -1),
+    
     /* REGEX Globals */
         
         /* NODES */
@@ -54,6 +60,8 @@ define(['./Sub/Map/Map'],function(CreateMap){
         
         /* for splitting the attribute name binds */
         _reAttrNameBind = /([^{]+(?=}}\=))/g,
+        
+        _reStyleProperty = /([^{]+(?=}}\:))/g,
         
         /* BIND FUNCTIONALITY */
         /* grabs the key from the beginning of the bind using .replace to get rid of all other content */
@@ -98,8 +106,12 @@ define(['./Sub/Map/Map'],function(CreateMap){
       /* Name of the component */
       this.name = node.tagName.toLowerCase();
       
+      _built[this.name] = ((_built[this.name]+1) || 0);
+      
+      this.nameCount = this.name+'_'+_built[this.name];
+      
       /* template of the component */
-      this.template = _templates[this.name] || '<div class="missing_component">Unknown Component</div>';
+      this.template = _templates[this.name].replace('<style','<style title="'+this.nameCount+'"') || '<div class="missing_component">Unknown Component</div>';
       
       /* original node */
       this.node = node;
@@ -114,6 +126,8 @@ define(['./Sub/Map/Map'],function(CreateMap){
       this.wrapper.className = "Wrapper Wrapper__"+this.name;
       
       this.wrapper.innerHTML = this.template;
+      
+      this.stylesheet = this.wrapper.querySelector('style').sheet;
       
       if(node.parentElement.stopChange)
       {
@@ -138,9 +152,9 @@ define(['./Sub/Map/Map'],function(CreateMap){
       for(var x=0,len=splitNodes.length,key,attr,node;x<len;x++)
       {
         key = splitNodes[x].replace(_reGetNodeName,'$3');
-        attr = splitNodes[x].match(_reAttrNameBind);
+        /* attr =  for future use splitNodes[x].match(_reAttrNameBind);*/
         node = splitNodes[x].match(_reNodeStart);
-        if(attr || node)
+        if(node)
         {
           if(!keys[key]) 
           {
@@ -173,7 +187,7 @@ define(['./Sub/Map/Map'],function(CreateMap){
       return splitNodes.join('');
     }
     
-    function loopMap(childNodes,maps)
+    function loopMap(childNodes,maps,styleSheet)
     {
       for(var x=0,len=childNodes.length,node;x<len;x++)
       {
@@ -191,12 +205,56 @@ define(['./Sub/Map/Map'],function(CreateMap){
           case 3:
             if(node.textContent.match(_reBind))
             {
+              if(node.parentElement.nodeName === 'STYLE' && !_isFirefox)
+              {
+                var rules = node.sheet.cssRules || node.sheet.rules;
+                for(var i=0,lenn=rules.length,cssRule;i<lenn;i++)
+                {
+                  cssRule = rules[i];
+                  
+                  if(cssRule.selectorText.match(_reBind))
+                  {
+                    CreateMap()
+                    .element(node)
+                    .cssRule(cssRule)
+                    .maps(maps)
+                    .type('style_selector')
+                    .text(cssRule.selectorText)
+                    .call(maps);
+                  }
+                  
+                  if(cssRule.style.cssText.match(_reBind))
+                  {
+                    CreateMap()
+                    .element(node)
+                    .cssRule(cssRule)
+                    .maps(maps)
+                    .type('style_rule')
+                    .text(cssRule.style.cssText)
+                    .call(maps);
+                  }
+                }
+                
+                /* bind to text content for these only for future use */
+                /*if(node.textContent.match(_reStyleProperty))
+                {
+                  CreateMap()
+                  .element(node)
+                  .maps(maps)
+                  .type('style_property')
+                  .text(node.textContent)
+                  .call(maps);
+                }*/
+              }
+              else
+              {
                 CreateMap()
                 .element(node)
                 .maps(maps)
-                .type((node.parentElement.nodeName === 'STYLE' ? 'style' : 'text'))
+                .type('text')
                 .text(node.textContent)
                 .call(maps);
+              }
             }
           break;
           case 1: 
@@ -213,13 +271,25 @@ define(['./Sub/Map/Map'],function(CreateMap){
                 return childNodes;
               }
               
-              CreateMap()
-              .element(node)
-              .children((node.textContent.match(_reNodeStart) && !node.textContent.match(_reNodeEnd) ? getNextSibling(node.nextSibling,[]) : []))
-              .maps(maps)
-              .type('placeholder')
-              .text(node.textContent)
-              .call(maps);
+              if(node.textContent.match(_reNodeStart))
+              {
+                CreateMap()
+                .children((node.textContent.match(_reNodeStart) && !node.textContent.match(_reNodeEnd) ? getNextSibling(node.nextSibling,[]) : []))
+                .maps(maps)
+                .type('node')
+                .text(node.textContent)
+                .call(maps);
+              }
+              /* for future use
+              else if(node.textContent.match(_reAttrNameBind) && !node instanceof HTMLUnknownElement)
+              {
+                CreateMap()
+                .children((!node.textContent.match(_reEndTag) ? getNextSibling(node.nextSibling,[]) : []))
+                .maps(maps)
+                .type('attrName')
+                .text(node.textContent)
+                .call(maps);
+              }*/
             }
             else
             {

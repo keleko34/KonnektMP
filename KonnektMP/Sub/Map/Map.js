@@ -6,7 +6,8 @@ define(['./../Binding/Binding'],function(CreateBinding){
         _text = '',
         _attr,
         _type = '',
-        _typeEnum = ['text','attribute','component','event','style','placeholder','node','attrName'],
+        _cssRule,
+        _typeEnum = ['text','attribute','component_attr','event','style_selector','style_rule','placeholder','node','attrName'],
         _children = [],
         
         /* REGEX */
@@ -46,28 +47,61 @@ define(['./../Binding/Binding'],function(CreateBinding){
         break;
         case 'component_attr':
           CreateBinding()
-          
-        break;
-        case 'component__attrname':
-          
+          .addProto('text',_text)
+          .addProto('bindText',_text.split(_reTextBinds).filter(Boolean))
+          .addProto('attr',_attr.name)
+          .addProto('type',_type)
+          .call(this);
         break;
         case 'event':
-          
+          CreateBinding()
+          .addProto('text',_text)
+          .addProto('bindText',_text.split(_reTextBinds).filter(Boolean))
+          .addProto('node',_element)
+          .addProto('isInput',(_element.tagName === 'INPUT'))
+          .addProto('attr',_attr.name)
+          .addProto('localAttr','value')
+          .addProto('maps',_maps)
+          .addProto('listener',_attr.name)
+          .addProto('type',_type)
+          .call(this);
         break;
-        case 'style':
-          
+        case 'style_selector':
+          CreateBinding()
+          .addProto('text',_text)
+          .addProto('bindText',_text.split(_reTextBinds).filter(Boolean))
+          .addProto('local',_cssRule)
+          .addProto('node',_element)
+          .addProto('attr','selectorText')
+          .addProto('localAttr','selectorText')
+          .addProto('maps',_maps)
+          .addProto('listener','html')
+          .addProto('type',_type)
+          .call(this);
         break;
-        case 'style':
-          
-        break;
-        case 'placeholder':
-          
+        case 'style_rule':
+          CreateBinding()
+          .addProto('text',_text)
+          .addProto('bindText',_text.split(_reTextBinds).filter(Boolean))
+          .addProto('local',_cssRule.style)
+          .addProto('node',_element)
+          .addProto('attr','cssText')
+          .addProto('localAttr','cssText')
+          .addProto('maps',_maps)
+          .addProto('listener','html')
+          .addProto('type',_type)
+          .call(this);
         break;
         case 'node':
-          
-        break;
-        case 'attrName':
-          
+          var bindText = _text.split(_reTextBinds).filter(Boolean);
+          CreateBinding()
+          .addProto('text',_text)
+          .addProto('bindText',bindText)
+          .addProto('base',bindText[1])
+          .addProto('subNodes',_children)
+          .addProto('maps',_maps)
+          .addProto('type',_type)
+          .call(this);
         break;
       }
     }
@@ -112,6 +146,13 @@ define(['./../Binding/Binding'],function(CreateBinding){
     {
       if(children === undefined) return _children;
       _children = children;
+      return Map;
+    }
+    
+    Map.cssRule = function(cssRule)
+    {
+      if(cssRule === undefined) return _cssRule;
+      _cssRule = cssRule;
       return Map;
     }
     /* END SECTION Public Methods */
